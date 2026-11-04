@@ -54,6 +54,11 @@
   .quiz .info { text-align: center; font-size: 16px; min-height: 48px; }
   .quiz .btns { display: flex; gap: 10px; margin-top: 10px; }
   .quiz .btns .btn { min-height: 52px; font-size: 18px; }
+  .modes { display: flex; gap: 10px; margin: 4px 0 10px; }
+  .modes .btn { min-height: 52px; font-size: 18px; }
+  .subs { display: flex; gap: 16px; justify-content: center; margin-bottom: 8px; font-size: 17px; }
+  .subs label { display: flex; gap: 6px; align-items: center; }
+  .subs input { width: 22px; height: 22px; }
   .hints { margin: 8px 0 0; padding-left: 20px; font-size: 16px; text-align: left; }
   .hints li { margin: 4px 0; }
   .hints .t { color: var(--accent); font-weight: 700; }
@@ -87,6 +92,15 @@
 
   <section class="card quiz" aria-label="퀴즈">
     <h2>퀴즈 <span id="score" style="float:right"></span></h2>
+    <div class="modes" role="group" aria-label="퀴즈 모드">
+      <button id="mBasic" class="btn" aria-pressed="true">기초 모드</button>
+      <button id="mWord" class="btn off" aria-pressed="false">단어 모드</button>
+    </div>
+    <div class="subs" id="subs">
+      <label><input type="checkbox" id="sVow" checked> 모음</label>
+      <label><input type="checkbox" id="sInit" checked> 첫소리</label>
+      <label><input type="checkbox" id="sFin"> 받침</label>
+    </div>
     <div class="q" id="qword">퀴즈 시작을 눌러 주세요</div>
     <div class="ox" id="ox" aria-live="assertive"></div>
     <div class="info" id="qinfo">점을 누르고 <b>다음</b>(칸 확정), 다 썼으면 <b>완료</b>를 누르세요</div>
@@ -167,7 +181,7 @@ const JAMO = { 'ㄱ':'기역','ㄴ':'니은','ㄷ':'디귿','ㄹ':'리을','ㅁ'
 const spoken = (mode, letter) => `${mode} ${JAMO[letter] || letter}`;
 
 // ---- 퀴즈 ----
-const QUIZ = [   // 낱말, 정답 점자(여러 표기 가능: 약자 / 풀어 쓰기)
+const WORDS = [   // 낱말, 정답 점자(여러 표기 가능: 약자 / 풀어 쓰기)
   ['사과',  ['123/4/1236', '6/126/4/1236']],
   ['나무',  ['14/15/134', '14/126/15/134']],
   ['우유',  ['134/146']],
@@ -178,19 +192,42 @@ const QUIZ = [   // 낱말, 정답 점자(여러 표기 가능: 약자 / 풀어 
   ['감자',  ['4/126/26/46', '4/126/26/46/126']],
   ['학교',  ['245/126/1/4/346']],
   ['은행',  ['1356/245/1235/2356', '246/25/245/1235/2356']],
-];
+].map(([w, a]) => ({ kind: 'word', key: w, answers: a, prompt: `'${w}'를 써 보세요`, speak: `${w}, 를 써 보세요` }));
+
+// 기초 모드 문제: 낱자 하나 = 점자 한 칸
+function basicItems() {
+  const { INIT, VOW, FIN } = BRAILLE_MAPS, out = [];
+  const add = (map, cat, on) => on && Object.entries(map).forEach(([cell, j]) =>
+    out.push({ kind: 'basic', key: `${cat} ${j}`, cell, prompt: `${cat} '${j}'`, speak: `${cat} ${JAMO[j] || j}, 를 써 보세요` }));
+  add(VOW, '모음', $('sVow').checked); add(INIT, '첫소리', $('sInit').checked); add(FIN, '받침', $('sFin').checked);
+  return out;
+}
+let quizMode = 'basic';
+function setMode(m) {
+  quizMode = m;
+  $('mBasic').classList.toggle('off', m !== 'basic'); $('mBasic').setAttribute('aria-pressed', m === 'basic');
+  $('mWord').classList.toggle('off', m !== 'word');   $('mWord').setAttribute('aria-pressed', m === 'word');
+  $('subs').style.display = m === 'basic' ? 'flex' : 'none';
+  if (quiz) newQuestion();
+  else say(m === 'basic' ? '기초 모드' : '단어 모드');
+}
+
 let quiz = null, score = { o: 0, x: 0 }, qnum = 0;
-const sayQuestion = () => quiz && say(`문제 ${qnum}번. ${quiz[0]}, 를 써 보세요`);
+const sayQuestion = () => quiz && say(`문제 ${qnum}번. ${quiz.speak}`);
 function newQuestion() {
-  // 틀린 낱말일수록 다시 나올 확률이 높아요 (가중치 = 1 + 틀린 횟수 × 2)
-  const pool = QUIZ.filter(x => !quiz || x[0] !== quiz[0]);
-  const w = pool.map(x => 1 + 2 * (Diagnose.stats.words[x[0]] || 0));
+  let all = quizMode === 'basic' ? basicItems() : WORDS;
+  if (!all.length) { $('sVow').checked = true; all = basicItems(); }   // 아무것도 안 골랐으면 모음
+  // 틀린 문제일수록 다시 나올 확률이 높아요 (가중치 = 1 + 틀린 횟수 × 2)
+  const pool = all.filter(x => !quiz || x.key !== quiz.key);
+  const w = pool.map(x => 1 + 2 * (Diagnose.stats.words[x.key] || 0));
   let r = Math.random() * w.reduce((a, b) => a + b, 0), q = pool[0];
   for (let i = 0; i < pool.length; i++) { r -= w[i]; if (r <= 0) { q = pool[i]; break; } }
   quiz = q;
-  $('qword').textContent = `'${q[0]}'를 써 보세요`;
+  $('qword').textContent = q.prompt + (q.kind === 'basic' ? '를 써 보세요' : '');
   $('ox').textContent = ''; $('ox').className = 'ox';
-  $('qinfo').innerHTML = '점을 누르고 <b>다음</b>(칸 확정), 다 썼으면 <b>완료</b>를 누르세요';
+  $('qinfo').innerHTML = q.kind === 'basic'
+    ? '점을 누르고 <b>다음</b>을 누르면 바로 채점돼요'
+    : '점을 누르고 <b>다음</b>(칸 확정), 다 썼으면 <b>완료</b>를 누르세요';
   $('qstart').textContent = '퀴즈 끄기';
   history = []; showHistory();
   qnum++;
@@ -198,23 +235,43 @@ function newQuestion() {
 }
 function showScore() { $('score').textContent = quiz || score.o + score.x ? `O ${score.o} · X ${score.x}` : ''; }
 function gradeWord(word, cells) {
-  const ok = word === quiz[0];
-  const d = ok ? { errors: [], answer: quiz[1][0].split('/') } : Diagnose.diagnose(cells, quiz[1]);
-  Diagnose.record(quiz[0], ok, d.errors);
+  const ok = word === quiz.key;
+  const d = ok ? { errors: [], answer: quiz.answers[0].split('/') } : Diagnose.diagnose(cells, quiz.answers);
+  finishGrade(ok, d.errors,
+    `정답! 입력: ${cells.join(' / ')}`,
+    `입력한 것: <b>${word || '(없음)'}</b> (${cells.join(' / ') || '-'})<br>정답 점자: <b>${d.answer.join(' / ')}</b>`,
+    `정답입니다. ${quiz.key}`,
+    `틀렸어요. 정답은 ${quiz.key} 입니다.`,
+    `입력 ${word}, ${cells.join('/')}`);
+}
+
+// 기초 모드: 한 칸 채점 (다음 버튼을 누르면 바로)
+function gradeCell(cell) {
+  const ok = cell === quiz.cell;
+  const errors = ok ? [] : [{ where: '', cell: quiz.cell, ...Diagnose.compareCell(cell, quiz.cell) }];
+  const dots = c => c.split('').join(', ');
+  history = []; showHistory();
+  finishGrade(ok, errors,
+    `정답! ${quiz.prompt} = ${dots(cell)}번 점`,
+    `입력한 점: <b>${dots(cell)}</b><br>정답 점자: <b>${dots(quiz.cell)}</b>`,
+    `정답입니다. ${readable(quiz.key)}`,
+    `틀렸어요. ${readable(quiz.key)}는 ${dots(quiz.cell)}번 점이에요.`,
+    `입력 ${cell}`);
+}
+
+function finishGrade(ok, errors, okHtml, xHtml, okSay, xSay, logText) {
+  Diagnose.record(quiz.key, ok, errors);
   ok ? score.o++ : score.x++; showScore(); showPattern();
   $('ox').textContent = ok ? 'O' : 'X'; $('ox').className = 'ox ' + (ok ? 'o' : 'x');
-  if (ok) {
-    $('qinfo').innerHTML = `정답! 입력: ${cells.join(' / ')}`;
-    say(`정답입니다. ${quiz[0]}`);
-  } else {
-    const hints = d.errors.map(e => `<li><span class="t">${e.where} · ${e.type}</span><br>${e.msg}</li>`).join('');
-    $('qinfo').innerHTML = `입력한 것: <b>${word || '(없음)'}</b> (${cells.join(' / ') || '-'})<br>`
-      + `정답 점자: <b>${d.answer.join(' / ')}</b><ul class="hints">${hints}</ul>`;
-    const first = d.errors[0] ? ` ${d.errors[0].where}. ${readable(d.errors[0].msg.replace(/·/g, ', '))}` : '';
-    say(`틀렸어요. 정답은 ${quiz[0]} 입니다.${first}`);
+  if (ok) { $('qinfo').innerHTML = okHtml; say(okSay); }
+  else {
+    const hints = errors.map(e => `<li><span class="t">${e.where ? e.where + ' · ' : ''}${e.type}</span><br>${e.msg}</li>`).join('');
+    $('qinfo').innerHTML = xHtml + `<ul class="hints">${hints}</ul>`;
+    const first = errors[0] ? ` ${errors[0].where ? errors[0].where + '. ' : ''}${readable(errors[0].msg.replace(/·/g, ', '))}` : '';
+    say(xSay + first);
   }
-  log(`퀴즈 '${quiz[0]}' → ${ok ? 'O' : 'X'} (입력 ${word}, ${cells.join('/')})${d.errors.map(e => ' · ' + e.type).join('')}`);
-  setTimeout(newQuestion, ok ? 3000 : 9000);
+  log(`퀴즈 '${quiz.key}' → ${ok ? 'O' : 'X'} (${logText})${errors.map(e => ' · ' + e.type).join('')}`);
+  setTimeout(() => { if (quiz) newQuestion(); }, ok ? 3000 : 8000);
 }
 
 // 자주 틀리는 유형·글자 보여 주기
@@ -228,7 +285,7 @@ function showPattern() {
     (types.length ? `<div style="margin-top:8px">${types.map(([k, v]) =>
       `<div class="bar"><span style="width:120px">${k}</span><span class="b" style="width:${Math.round(v / max * 140)}px"></span><span>${v}</span></div>`).join('')}</div>` : '') +
     (letters.length ? `<div style="margin-top:8px">자주 틀리는 글자: <b>${letters.map(([k, v]) => `${k}(${v})`).join(', ')}</b></div>` : '') +
-    (words.length ? `<div>다시 자주 낼 낱말: <b>${words.map(([k]) => k).join(', ')}</b></div>` : '');
+    (words.length ? `<div>다시 자주 낼 문제: <b>${words.map(([k]) => k).join(', ')}</b></div>` : '');
 }
 
 // 소리로 읽을 때: 낱자(ㄱ, ㅏ)는 이름으로 바꿔 읽기
@@ -319,16 +376,19 @@ function handleLine(line) {
   if (line === 'DEC NONE') {
     $('res').textContent = '?'; $('cands').innerHTML = '';
     $('ressub').textContent += ' → 일치하는 점자가 없어요';
+    log(`칸 확정 → 일치하는 점자 없음`);
+    if (quiz && quiz.kind === 'basic') { gradeCell(lastCell); return; }
     history.push({ cell: lastCell, letter: '?' }); showHistory();
-    log(`칸 확정 → 일치하는 점자 없음`); say(`${lastCell.split('').join(', ')}번 점. 일치하는 점자가 없어요`);
+    say(`${lastCell.split('').join(', ')}번 점. 일치하는 점자가 없어요`);
     return;
   }
   if (line.startsWith('DEC ')) {
     const cands = line.slice(4).trim().split(/\s+/).map(x => x.split(':'));   // [['초성','ㄴ'], ...]
     $('res').textContent = cands.map(c => c[1]).filter((v, i, a) => a.indexOf(v) === i).slice(0, 3).join(' / ');
     $('cands').innerHTML = cands.map(([mo, le]) => `<span class="cand">${mo} <b>${le}</b></span>`).join('');
-    history.push({ cell: lastCell, letter: (cands.find(c => c[0] !== '영어') || cands[0])[1] }); showHistory();
     log(`칸 확정 → ${cands.map(c => c.join(' ')).join(', ')}`);
+    if (quiz && quiz.kind === 'basic') { gradeCell(lastCell); return; }
+    history.push({ cell: lastCell, letter: (cands.find(c => c[0] !== '영어') || cands[0])[1] }); showHistory();
     const ko = cands.filter(c => c[0] !== '영어');
     const dots = lastCell.split('').join(', ');
     const partial = composeBraille(history.map(h => h.cell), true);   // 지금까지 조합한 글자
@@ -339,7 +399,7 @@ function handleLine(line) {
   if (m) {
     $('cands').insertAdjacentHTML('afterbegin', `<span class="cand">두 칸 ${m[1]} → ${m[2]} <b>${m[3]}</b></span>`);
     log(`두 칸 ${m[1]} → ${m[2]} ${m[3]}`);
-    setTimeout(() => say(`두 칸으로 읽으면 ${m[3]}`), 1800);
+    if (!quiz) setTimeout(() => say(`두 칸으로 읽으면 ${m[3]}`), 1800);
     return;
   }
   m = line.match(/^CLEAR\s+([1-6]+)$/);
@@ -367,7 +427,8 @@ function handleLine(line) {
       $('words').innerHTML = words.slice(0, 10).map(x => `<div>${x}</div>`).join('');
     }
     log(`완료 → 낱말: ${word || '(없음)'}`);
-    if (quiz) gradeWord(word, cells);
+    if (quiz && quiz.kind === 'word') gradeWord(word, cells);
+    else if (quiz) say('기초 모드에서는 다음 버튼을 누르면 채점돼요');
     else say(word ? readable(word) : '쓴 칸이 없어요');
     return;
   }
@@ -427,6 +488,9 @@ $('qstart').addEventListener('click', () => {
 });
 $('qskip').addEventListener('click', () => { if (quiz) newQuestion(); });
 $('qagain').addEventListener('click', sayQuestion);
+$('mBasic').addEventListener('click', () => setMode('basic'));
+$('mWord').addEventListener('click', () => setMode('word'));
+['sVow', 'sInit', 'sFin'].forEach(id => $(id).addEventListener('change', () => { if (quiz && quizMode === 'basic') newQuestion(); }));
 $('test').addEventListener('click', () => say('음성 피드백 테스트입니다'));
 </script>
 </body>
