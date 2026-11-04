@@ -60,5 +60,6 @@
     return out;
   }
   g.composeBraille = compose;
+  g.BRAILLE_MAPS = { INIT, VOW, FIN, SYL, VF };
   if (typeof module !== 'undefined') module.exports = compose;
 })(typeof window !== 'undefined' ? window : globalThis);

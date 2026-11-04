@@ -54,6 +54,11 @@
   .quiz .info { text-align: center; font-size: 16px; min-height: 48px; }
   .quiz .btns { display: flex; gap: 10px; margin-top: 10px; }
   .quiz .btns .btn { min-height: 52px; font-size: 18px; }
+  .hints { margin: 8px 0 0; padding-left: 20px; font-size: 16px; text-align: left; }
+  .hints li { margin: 4px 0; }
+  .hints .t { color: var(--accent); font-weight: 700; }
+  .bar { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 15px; }
+  .bar .b { height: 12px; background: var(--accent); border-radius: 6px; }
   .hist { display: flex; flex-wrap: wrap; gap: 10px; min-height: 64px; align-items: center; }
   .hc { border: 2px solid var(--line); border-radius: 12px; padding: 6px 12px; text-align: center; min-width: 56px; }
   .hc .l { font-size: 26px; font-weight: 800; color: var(--accent); }
@@ -87,8 +92,14 @@
     <div class="info" id="qinfo">점을 누르고 <b>다음</b>(칸 확정), 다 썼으면 <b>완료</b>를 누르세요</div>
     <div class="btns">
       <button id="qstart" class="btn">퀴즈 시작</button>
+      <button id="qagain" class="btn off">다시 듣기</button>
       <button id="qskip" class="btn off">다른 문제</button>
     </div>
+  </section>
+
+  <section class="card" aria-label="나의 오류 패턴">
+    <h2>나의 오류 패턴</h2>
+    <div id="pattern" class="note">퀴즈를 풀면 자주 틀리는 유형이 여기에 쌓여요</div>
   </section>
 
   <section class="card" aria-label="현재 누른 점">
@@ -137,6 +148,7 @@
 </main>
 
 <script src="compose.js"></script>
+<script src="diagnose.js"></script>
 <script>
 const SVC = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // ESP32 → 폰 (notify)
@@ -155,32 +167,68 @@ const JAMO = { 'ㄱ':'기역','ㄴ':'니은','ㄷ':'디귿','ㄹ':'리을','ㅁ'
 const spoken = (mode, letter) => `${mode} ${JAMO[letter] || letter}`;
 
 // ---- 퀴즈 ----
-const QUIZ = [   // 낱말, 정답 칸(표준 점자)
-  ['사과','123/4/1236'], ['나무','14/15/134'], ['우유','134/146'], ['바다','45/24'], ['오이','136/135'],
-  ['하마','245/15'], ['기차','4/135/56/126'], ['감자','4/126/26/46'], ['학교','245/126/1/4/346'], ['은행','1356/245/1235/2356'],
+const QUIZ = [   // 낱말, 정답 점자(여러 표기 가능: 약자 / 풀어 쓰기)
+  ['사과',  ['123/4/1236', '6/126/4/1236']],
+  ['나무',  ['14/15/134', '14/126/15/134']],
+  ['우유',  ['134/146']],
+  ['바다',  ['45/24', '45/126/24/126']],
+  ['오이',  ['136/135']],
+  ['하마',  ['245/15', '245/126/15/126']],
+  ['기차',  ['4/135/56/126']],
+  ['감자',  ['4/126/26/46', '4/126/26/46/126']],
+  ['학교',  ['245/126/1/4/346']],
+  ['은행',  ['1356/245/1235/2356', '246/25/245/1235/2356']],
 ];
-let quiz = null, score = { o: 0, x: 0 };
+let quiz = null, score = { o: 0, x: 0 }, qnum = 0;
+const sayQuestion = () => quiz && say(`문제 ${qnum}번. ${quiz[0]}, 를 써 보세요`);
 function newQuestion() {
-  let q; do { q = QUIZ[Math.floor(Math.random() * QUIZ.length)]; } while (quiz && QUIZ.length > 1 && q[0] === quiz[0]);
+  // 틀린 낱말일수록 다시 나올 확률이 높아요 (가중치 = 1 + 틀린 횟수 × 2)
+  const pool = QUIZ.filter(x => !quiz || x[0] !== quiz[0]);
+  const w = pool.map(x => 1 + 2 * (Diagnose.stats.words[x[0]] || 0));
+  let r = Math.random() * w.reduce((a, b) => a + b, 0), q = pool[0];
+  for (let i = 0; i < pool.length; i++) { r -= w[i]; if (r <= 0) { q = pool[i]; break; } }
   quiz = q;
   $('qword').textContent = `'${q[0]}'를 써 보세요`;
   $('ox').textContent = ''; $('ox').className = 'ox';
   $('qinfo').innerHTML = '점을 누르고 <b>다음</b>(칸 확정), 다 썼으면 <b>완료</b>를 누르세요';
   $('qstart').textContent = '퀴즈 끄기';
   history = []; showHistory();
-  say(`${q[0]}, 를 써 보세요`);
+  qnum++;
+  sayQuestion();
 }
 function showScore() { $('score').textContent = quiz || score.o + score.x ? `O ${score.o} · X ${score.x}` : ''; }
 function gradeWord(word, cells) {
   const ok = word === quiz[0];
-  ok ? score.o++ : score.x++; showScore();
+  const d = ok ? { errors: [], answer: quiz[1][0].split('/') } : Diagnose.diagnose(cells, quiz[1]);
+  Diagnose.record(quiz[0], ok, d.errors);
+  ok ? score.o++ : score.x++; showScore(); showPattern();
   $('ox').textContent = ok ? 'O' : 'X'; $('ox').className = 'ox ' + (ok ? 'o' : 'x');
-  $('qinfo').innerHTML = ok
-    ? `정답! 입력: ${cells.join(' / ')}`
-    : `입력한 것: <b>${word || '(없음)'}</b> (${cells.join(' / ') || '-'})<br>정답 점자: <b>${quiz[1].replace(/\//g, ' / ')}</b>`;
-  log(`퀴즈 '${quiz[0]}' → ${ok ? 'O' : 'X'} (입력 ${word}, ${cells.join('/')})`);
-  say(ok ? `정답입니다. ${quiz[0]}` : `틀렸어요. 입력한 것은 ${word || '없음'}, 정답은 ${quiz[0]} 입니다`);
-  setTimeout(newQuestion, ok ? 2500 : 5000);
+  if (ok) {
+    $('qinfo').innerHTML = `정답! 입력: ${cells.join(' / ')}`;
+    say(`정답입니다. ${quiz[0]}`);
+  } else {
+    const hints = d.errors.map(e => `<li><span class="t">${e.where} · ${e.type}</span><br>${e.msg}</li>`).join('');
+    $('qinfo').innerHTML = `입력한 것: <b>${word || '(없음)'}</b> (${cells.join(' / ') || '-'})<br>`
+      + `정답 점자: <b>${d.answer.join(' / ')}</b><ul class="hints">${hints}</ul>`;
+    const first = d.errors[0] ? ` ${d.errors[0].where}. ${readable(d.errors[0].msg.replace(/·/g, ', '))}` : '';
+    say(`틀렸어요. 정답은 ${quiz[0]} 입니다.${first}`);
+  }
+  log(`퀴즈 '${quiz[0]}' → ${ok ? 'O' : 'X'} (입력 ${word}, ${cells.join('/')})${d.errors.map(e => ' · ' + e.type).join('')}`);
+  setTimeout(newQuestion, ok ? 3000 : 9000);
+}
+
+// 자주 틀리는 유형·글자 보여 주기
+function showPattern() {
+  const st = Diagnose.stats;
+  if (!st.total) return;
+  const types = Diagnose.top(st.types, 5), letters = Diagnose.top(st.letters, 3), words = Diagnose.top(st.words, 3);
+  const max = Math.max(1, ...types.map(t => t[1]));
+  $('pattern').innerHTML =
+    `<div>푼 문제 ${st.total}개 · 틀린 문제 ${st.wrong}개</div>` +
+    (types.length ? `<div style="margin-top:8px">${types.map(([k, v]) =>
+      `<div class="bar"><span style="width:120px">${k}</span><span class="b" style="width:${Math.round(v / max * 140)}px"></span><span>${v}</span></div>`).join('')}</div>` : '') +
+    (letters.length ? `<div style="margin-top:8px">자주 틀리는 글자: <b>${letters.map(([k, v]) => `${k}(${v})`).join(', ')}</b></div>` : '') +
+    (words.length ? `<div>다시 자주 낼 낱말: <b>${words.map(([k]) => k).join(', ')}</b></div>` : '');
 }
 
 // 소리로 읽을 때: 낱자(ㄱ, ㅏ)는 이름으로 바꿔 읽기
@@ -207,10 +255,10 @@ function setStatus(on, text) {
 
 function say(text) {
   if (!$('speak').checked || !('speechSynthesis' in window)) return;
-  speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'ko-KR'; u.rate = 1.1;
-  speechSynthesis.speak(u);
+  if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+  setTimeout(() => speechSynthesis.speak(u), 80);   // 취소 직후 바로 말하면 안드로이드에서 씹히는 경우가 있음
 }
 
 function log(line) {
@@ -378,6 +426,7 @@ $('qstart').addEventListener('click', () => {
   else { score = { o: 0, x: 0 }; newQuestion(); showScore(); }
 });
 $('qskip').addEventListener('click', () => { if (quiz) newQuestion(); });
+$('qagain').addEventListener('click', sayQuestion);
 $('test').addEventListener('click', () => say('음성 피드백 테스트입니다'));
 </script>
 </body>
