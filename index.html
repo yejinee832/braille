@@ -221,7 +221,7 @@ function handleLine(line) {
     $('res').textContent = '?'; $('cands').innerHTML = '';
     $('ressub').textContent += ' → 일치하는 점자가 없어요';
     history.push({ cell: lastCell, letter: '?' }); showHistory();
-    log(`완료 → 일치하는 점자 없음`); say('일치하는 점자가 없어요');
+    log(`완료 → 일치하는 점자 없음`); say(`${lastCell.split('').join(', ')}번 점. 일치하는 점자가 없어요`);
     return;
   }
   if (line.startsWith('DEC ')) {
@@ -231,7 +231,8 @@ function handleLine(line) {
     log(`완료 → ${cands.map(c => c.join(' ')).join(', ')}`);
     history.push({ cell: lastCell, letter: (cands.find(c => c[0] !== '영어') || cands[0])[1] }); showHistory();
     const ko = cands.filter(c => c[0] !== '영어');
-    say((ko.length ? ko : cands).map(c => spoken(c[0], c[1])).join(', '));
+    const dots = lastCell.split('').join(', ');
+    say(`${dots}번 점. ${(ko.length ? ko : cands).map(c => spoken(c[0], c[1])).join(', 또는 ')}`);
     return;
   }
   m = line.match(/^PAIR\s+(\S+)\s+(\S+):(\S+)$/);
