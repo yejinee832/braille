@@ -48,6 +48,10 @@
   .cands { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
   .cand { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 16px; }
   .cand b { color: var(--accent); }
+  .hist { display: flex; flex-wrap: wrap; gap: 10px; min-height: 64px; align-items: center; }
+  .hc { border: 2px solid var(--line); border-radius: 12px; padding: 6px 12px; text-align: center; min-width: 56px; }
+  .hc .l { font-size: 26px; font-weight: 800; color: var(--accent); }
+  .hc .p { font-size: 13px; color: var(--muted); }
 
   .last { font-size: 30px; font-weight: 800; text-align: center; min-height: 45px; }
   .lastsub { text-align: center; color: var(--muted); font-size: 15px; min-height: 22px; }
@@ -86,6 +90,13 @@
     <div class="cands" id="cands"></div>
   </section>
 
+  <section class="card" aria-label="쓴 칸">
+    <h2>쓴 칸 (지우기를 누르면 마지막 칸이 지워져요)</h2>
+    <div class="hist" id="hist"><span class="note">아직 없어요</span></div>
+    <h2 style="margin-top:16px">끝낸 낱말 (다음 버튼)</h2>
+    <div id="words" class="note">아직 없어요</div>
+  </section>
+
   <section class="card" aria-label="모은 점">
     <h2>모은 점</h2>
     <div class="last" id="last" aria-live="assertive">—</div>
@@ -115,6 +126,7 @@ const TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // ESP32 → 폰 (notify)
 const $ = id => document.getElementById(id);
 let device = null, buf = '', downAt = {};
 let collected = new Set();                     // 완료 전까지 모은 점
+let history = [], lastCell = '', words = [];   // 완료로 확정한 칸들, 끝낸 낱말들
 const decoder = new TextDecoder();             // 한글이 조각나서 와도 이어 붙이기
 
 // 소리로 읽을 때 자음·모음 이름
@@ -124,6 +136,11 @@ const JAMO = { 'ㄱ':'기역','ㄴ':'니은','ㄷ':'디귿','ㄹ':'리을','ㅁ'
   'ㅐ':'애','ㅒ':'얘','ㅔ':'에','ㅖ':'예','ㅘ':'와','ㅙ':'왜','ㅚ':'외','ㅝ':'워','ㅞ':'웨','ㅟ':'위','ㅢ':'의' };
 const spoken = (mode, letter) => `${mode} ${JAMO[letter] || letter}`;
 
+function showHistory() {
+  $('hist').innerHTML = history.length
+    ? history.map(h => `<div class="hc"><div class="l">${h.letter}</div><div class="p">${h.cell}</div></div>`).join('')
+    : '<span class="note">아직 없어요</span>';
+}
 function showCollected() {
   for (let k = 1; k <= 6; k++) $('d' + k).classList.toggle('acc', collected.has(k));
   const list = [...collected].sort();
@@ -195,6 +212,7 @@ function handleLine(line) {
   // ---- 완료 버튼을 눌렀을 때 STM32가 보내는 해석 결과 ----
   m = line.match(/^CELL\s+([1-6]+)$/);
   if (m) {
+    lastCell = m[1];
     $('ressub').textContent = `입력한 점: ${m[1].split('').join(' · ')}`;
     collected.clear(); showCollected(); $('lastsub').textContent = '';
     return;
@@ -202,6 +220,7 @@ function handleLine(line) {
   if (line === 'DEC NONE') {
     $('res').textContent = '?'; $('cands').innerHTML = '';
     $('ressub').textContent += ' → 일치하는 점자가 없어요';
+    history.push({ cell: lastCell, letter: '?' }); showHistory();
     log(`완료 → 일치하는 점자 없음`); say('일치하는 점자가 없어요');
     return;
   }
@@ -210,6 +229,7 @@ function handleLine(line) {
     $('res').textContent = cands.map(c => c[1]).filter((v, i, a) => a.indexOf(v) === i).slice(0, 3).join(' / ');
     $('cands').innerHTML = cands.map(([mo, le]) => `<span class="cand">${mo} <b>${le}</b></span>`).join('');
     log(`완료 → ${cands.map(c => c.join(' ')).join(', ')}`);
+    history.push({ cell: lastCell, letter: (cands.find(c => c[0] !== '영어') || cands[0])[1] }); showHistory();
     const ko = cands.filter(c => c[0] !== '영어');
     say((ko.length ? ko : cands).map(c => spoken(c[0], c[1])).join(', '));
     return;
@@ -219,6 +239,31 @@ function handleLine(line) {
     $('cands').insertAdjacentHTML('afterbegin', `<span class="cand">두 칸 ${m[1]} → ${m[2]} <b>${m[3]}</b></span>`);
     log(`두 칸 ${m[1]} → ${m[2]} ${m[3]}`);
     setTimeout(() => say(`두 칸으로 읽으면 ${m[3]}`), 1800);
+    return;
+  }
+  m = line.match(/^CLEAR\s+([1-6]+)$/);
+  if (m) {                                       // 완료 전에 지우기 → 모은 점 지움
+    collected.clear(); showCollected(); $('lastsub').textContent = '';
+    log(`지우기 → 모은 점 ${m[1]} 지움`); say('지웠어요');
+    return;
+  }
+  if (line === 'BACK') {                         // 완료 후에 지우기 → 마지막 칸 지움
+    const h = history.pop(); showHistory();
+    $('res').textContent = '—'; $('cands').innerHTML = '';
+    $('ressub').textContent = h ? `앞 칸(${h.letter}) 지움` : '지울 칸이 없어요';
+    log(h ? `지우기 → 앞 칸 ${h.cell}(${h.letter}) 지움` : '지우기 → 지울 칸 없음');
+    say(h ? '앞 칸을 지웠어요' : '지울 칸이 없어요');
+    return;
+  }
+  if (line === 'NEXT') {                         // 다음 → 지금 낱말 끝내기
+    if (!history.length) { say('쓴 칸이 없어요'); return; }
+    const w = history.map(h => h.letter).join(' ');
+    words.unshift(`${w}  (${history.map(h => h.cell).join('/')})`);
+    $('words').innerHTML = words.slice(0, 10).map(x => `<div>${x}</div>`).join('');
+    log(`다음 → 낱말 끝: ${w}`);
+    say(`${history.map(h => JAMO[h.letter] || h.letter).join(', ')}. 다음 낱말을 쓰세요`);
+    history = []; showHistory();
+    $('res').textContent = '—'; $('cands').innerHTML = ''; $('ressub').textContent = '';
     return;
   }
   if (line === 'EMPTY') {
