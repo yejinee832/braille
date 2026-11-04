@@ -39,7 +39,15 @@
           grid-auto-flow: column; gap: 14px; justify-content: center; }
   .bd { border-radius: 50%; border: 3px solid var(--line); display: flex; align-items: center; justify-content: center;
         font-size: 20px; color: var(--muted); transition: background .08s, border-color .08s; }
+  .bd.acc { border-color: var(--accent); color: var(--accent); font-weight: 800; }
   .bd.on { background: var(--accent); border-color: var(--accent); color: #111; font-weight: 800; }
+  .legend { text-align: center; color: var(--muted); font-size: 14px; margin-top: 12px; }
+
+  .res { font-size: 56px; font-weight: 800; text-align: center; color: var(--accent); min-height: 80px; line-height: 1.4; }
+  .ressub { text-align: center; font-size: 17px; min-height: 26px; }
+  .cands { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
+  .cand { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 16px; }
+  .cand b { color: var(--accent); }
 
   .last { font-size: 30px; font-weight: 800; text-align: center; min-height: 45px; }
   .lastsub { text-align: center; color: var(--muted); font-size: 15px; min-height: 22px; }
@@ -63,15 +71,23 @@
   </div>
 
   <section class="card" aria-label="현재 누른 점">
-    <h2>지금 누르고 있는 점</h2>
+    <h2>점자 칸</h2>
     <div class="cell" id="cell">
       <div class="bd" id="d1">1</div><div class="bd" id="d2">2</div><div class="bd" id="d3">3</div>
       <div class="bd" id="d4">4</div><div class="bd" id="d5">5</div><div class="bd" id="d6">6</div>
     </div>
+    <div class="legend">노란 원 = 누르는 중 · 노란 테두리 = 모은 점</div>
   </section>
 
-  <section class="card" aria-label="마지막 입력">
-    <h2>마지막 입력</h2>
+  <section class="card" aria-label="해석 결과">
+    <h2>해석 결과 (완료 버튼을 누르면 나와요)</h2>
+    <div class="res" id="res" aria-live="assertive">—</div>
+    <div class="ressub" id="ressub"></div>
+    <div class="cands" id="cands"></div>
+  </section>
+
+  <section class="card" aria-label="모은 점">
+    <h2>모은 점</h2>
     <div class="last" id="last" aria-live="assertive">—</div>
     <div class="lastsub" id="lastsub"></div>
   </section>
@@ -98,6 +114,21 @@ const TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // ESP32 → 폰 (notify)
 
 const $ = id => document.getElementById(id);
 let device = null, buf = '', downAt = {};
+let collected = new Set();                     // 완료 전까지 모은 점
+const decoder = new TextDecoder();             // 한글이 조각나서 와도 이어 붙이기
+
+// 소리로 읽을 때 자음·모음 이름
+const JAMO = { 'ㄱ':'기역','ㄴ':'니은','ㄷ':'디귿','ㄹ':'리을','ㅁ':'미음','ㅂ':'비읍','ㅅ':'시옷','ㅇ':'이응',
+  'ㅈ':'지읒','ㅊ':'치읓','ㅋ':'키읔','ㅌ':'티읕','ㅍ':'피읖','ㅎ':'히읗','ㅆ':'쌍시옷',
+  'ㅏ':'아','ㅑ':'야','ㅓ':'어','ㅕ':'여','ㅗ':'오','ㅛ':'요','ㅜ':'우','ㅠ':'유','ㅡ':'으','ㅣ':'이',
+  'ㅐ':'애','ㅒ':'얘','ㅔ':'에','ㅖ':'예','ㅘ':'와','ㅙ':'왜','ㅚ':'외','ㅝ':'워','ㅞ':'웨','ㅟ':'위','ㅢ':'의' };
+const spoken = (mode, letter) => `${mode} ${JAMO[letter] || letter}`;
+
+function showCollected() {
+  for (let k = 1; k <= 6; k++) $('d' + k).classList.toggle('acc', collected.has(k));
+  const list = [...collected].sort();
+  $('last').textContent = list.length ? list.join(' · ') : '—';
+}
 
 function setStatus(on, text) {
   $('sdot').classList.toggle('on', on);
@@ -150,26 +181,62 @@ function handleLine(line) {
     setDot(k, down);
     if (down) {
       downAt[k] = t;
-      $('last').textContent = `${k}번 점`;
-      $('lastsub').textContent = '누르는 중';
+      collected.add(k); showCollected();
+      $('lastsub').textContent = `${k}번 점 누르는 중`;
       say(`${k}번`);
     } else if (downAt[k] !== undefined) {
       const ms = ((t - downAt[k]) >>> 0) / 1000;   // µs → ms (타이머 넘침 대비)
-      $('lastsub').textContent = `${ms.toFixed(0)} ms 동안 누름`;
+      $('lastsub').textContent = `${k}번 점 · ${ms.toFixed(0)} ms 동안 누름`;
       log(`${k}번 점 · ${ms.toFixed(0)}ms`);         // 한 번 누를 때 한 줄만
       delete downAt[k];
     }
     return;
   }
-  log(line);   // 그 밖의 메시지(앞으로 추가할 피드백 등)
+  // ---- 완료 버튼을 눌렀을 때 STM32가 보내는 해석 결과 ----
+  m = line.match(/^CELL\s+([1-6]+)$/);
+  if (m) {
+    $('ressub').textContent = `입력한 점: ${m[1].split('').join(' · ')}`;
+    collected.clear(); showCollected(); $('lastsub').textContent = '';
+    return;
+  }
+  if (line === 'DEC NONE') {
+    $('res').textContent = '?'; $('cands').innerHTML = '';
+    $('ressub').textContent += ' → 일치하는 점자가 없어요';
+    log(`완료 → 일치하는 점자 없음`); say('일치하는 점자가 없어요');
+    return;
+  }
+  if (line.startsWith('DEC ')) {
+    const cands = line.slice(4).trim().split(/\s+/).map(x => x.split(':'));   // [['초성','ㄴ'], ...]
+    $('res').textContent = cands.map(c => c[1]).filter((v, i, a) => a.indexOf(v) === i).slice(0, 3).join(' / ');
+    $('cands').innerHTML = cands.map(([mo, le]) => `<span class="cand">${mo} <b>${le}</b></span>`).join('');
+    log(`완료 → ${cands.map(c => c.join(' ')).join(', ')}`);
+    const ko = cands.filter(c => c[0] !== '영어');
+    say((ko.length ? ko : cands).map(c => spoken(c[0], c[1])).join(', '));
+    return;
+  }
+  m = line.match(/^PAIR\s+(\S+)\s+(\S+):(\S+)$/);
+  if (m) {
+    $('cands').insertAdjacentHTML('afterbegin', `<span class="cand">두 칸 ${m[1]} → ${m[2]} <b>${m[3]}</b></span>`);
+    log(`두 칸 ${m[1]} → ${m[2]} ${m[3]}`);
+    setTimeout(() => say(`두 칸으로 읽으면 ${m[3]}`), 1800);
+    return;
+  }
+  if (line === 'EMPTY') {
+    $('res').textContent = '—'; $('cands').innerHTML = ''; $('ressub').textContent = '입력된 점이 없어요';
+    say('입력된 점이 없어요');
+    return;
+  }
+  log(line);   // 그 밖의 메시지
 }
 
+let flushTimer = null;
 function onData(e) {
-  buf += new TextDecoder().decode(e.target.value);
+  buf += decoder.decode(e.target.value, { stream: true });   // 20바이트 조각을 이어 붙임
   const parts = buf.split('\n');
-  buf = parts.pop();                         // 줄바꿈이 없으면 한 통이 한 줄
+  buf = parts.pop();                         // 아직 안 끝난 줄은 남겨 둠
   parts.forEach(handleLine);
-  if (buf && !buf.includes('\n')) { handleLine(buf); buf = ''; }
+  clearTimeout(flushTimer);                  // 줄바꿈 없이 오는 예전 방식 대비
+  if (buf) flushTimer = setTimeout(() => { const b = buf; buf = ''; handleLine(b); }, 200);
 }
 
 async function connect() {
