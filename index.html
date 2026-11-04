@@ -48,6 +48,12 @@
   .cands { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
   .cand { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 16px; }
   .cand b { color: var(--accent); }
+  .quiz .q { font-size: 34px; font-weight: 800; text-align: center; }
+  .quiz .ox { font-size: 96px; font-weight: 900; text-align: center; line-height: 1.1; min-height: 106px; }
+  .ox.o { color: var(--ok); } .ox.x { color: var(--bad); }
+  .quiz .info { text-align: center; font-size: 16px; min-height: 48px; }
+  .quiz .btns { display: flex; gap: 10px; margin-top: 10px; }
+  .quiz .btns .btn { min-height: 52px; font-size: 18px; }
   .hist { display: flex; flex-wrap: wrap; gap: 10px; min-height: 64px; align-items: center; }
   .hc { border: 2px solid var(--line); border-radius: 12px; padding: 6px 12px; text-align: center; min-width: 56px; }
   .hc .l { font-size: 26px; font-weight: 800; color: var(--accent); }
@@ -74,6 +80,17 @@
     <span id="sdot" class="dot-s"></span><span id="stext">연결 안 됨</span>
   </div>
 
+  <section class="card quiz" aria-label="퀴즈">
+    <h2>퀴즈 <span id="score" style="float:right"></span></h2>
+    <div class="q" id="qword">퀴즈 시작을 눌러 주세요</div>
+    <div class="ox" id="ox" aria-live="assertive"></div>
+    <div class="info" id="qinfo">점을 누르고 <b>다음</b>(칸 확정), 다 썼으면 <b>완료</b>를 누르세요</div>
+    <div class="btns">
+      <button id="qstart" class="btn">퀴즈 시작</button>
+      <button id="qskip" class="btn off">다른 문제</button>
+    </div>
+  </section>
+
   <section class="card" aria-label="현재 누른 점">
     <h2>점자 칸</h2>
     <div class="cell" id="cell">
@@ -84,16 +101,16 @@
   </section>
 
   <section class="card" aria-label="해석 결과">
-    <h2>해석 결과 (완료 버튼을 누르면 나와요)</h2>
+    <h2>해석 결과 (다음 버튼을 누르면 나와요)</h2>
     <div class="res" id="res" aria-live="assertive">—</div>
     <div class="ressub" id="ressub"></div>
     <div class="cands" id="cands"></div>
   </section>
 
   <section class="card" aria-label="쓴 칸">
-    <h2>쓴 칸 (지우기를 누르면 마지막 칸이 지워져요)</h2>
+    <h2>쓴 칸 → <span id="partial" style="color:var(--text);font-size:20px"></span></h2>
     <div class="hist" id="hist"><span class="note">아직 없어요</span></div>
-    <h2 style="margin-top:16px">끝낸 낱말 (다음 버튼)</h2>
+    <h2 style="margin-top:16px">완성한 낱말 (완료 버튼)</h2>
     <div id="words" class="note">아직 없어요</div>
   </section>
 
@@ -119,6 +136,7 @@
   nRF Connect 앱이 연결돼 있으면 먼저 끊어 주세요.</p>
 </main>
 
+<script src="compose.js"></script>
 <script>
 const SVC = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // ESP32 → 폰 (notify)
@@ -136,7 +154,40 @@ const JAMO = { 'ㄱ':'기역','ㄴ':'니은','ㄷ':'디귿','ㄹ':'리을','ㅁ'
   'ㅐ':'애','ㅒ':'얘','ㅔ':'에','ㅖ':'예','ㅘ':'와','ㅙ':'왜','ㅚ':'외','ㅝ':'워','ㅞ':'웨','ㅟ':'위','ㅢ':'의' };
 const spoken = (mode, letter) => `${mode} ${JAMO[letter] || letter}`;
 
+// ---- 퀴즈 ----
+const QUIZ = [   // 낱말, 정답 칸(표준 점자)
+  ['사과','123/4/1236'], ['나무','14/15/134'], ['우유','134/146'], ['바다','45/24'], ['오이','136/135'],
+  ['하마','245/15'], ['기차','4/135/56/126'], ['감자','4/126/26/46'], ['학교','245/126/1/4/346'], ['은행','1356/245/1235/2356'],
+];
+let quiz = null, score = { o: 0, x: 0 };
+function newQuestion() {
+  let q; do { q = QUIZ[Math.floor(Math.random() * QUIZ.length)]; } while (quiz && QUIZ.length > 1 && q[0] === quiz[0]);
+  quiz = q;
+  $('qword').textContent = `'${q[0]}'를 써 보세요`;
+  $('ox').textContent = ''; $('ox').className = 'ox';
+  $('qinfo').innerHTML = '점을 누르고 <b>다음</b>(칸 확정), 다 썼으면 <b>완료</b>를 누르세요';
+  $('qstart').textContent = '퀴즈 끄기';
+  history = []; showHistory();
+  say(`${q[0]}, 를 써 보세요`);
+}
+function showScore() { $('score').textContent = quiz || score.o + score.x ? `O ${score.o} · X ${score.x}` : ''; }
+function gradeWord(word, cells) {
+  const ok = word === quiz[0];
+  ok ? score.o++ : score.x++; showScore();
+  $('ox').textContent = ok ? 'O' : 'X'; $('ox').className = 'ox ' + (ok ? 'o' : 'x');
+  $('qinfo').innerHTML = ok
+    ? `정답! 입력: ${cells.join(' / ')}`
+    : `입력한 것: <b>${word || '(없음)'}</b> (${cells.join(' / ') || '-'})<br>정답 점자: <b>${quiz[1].replace(/\//g, ' / ')}</b>`;
+  log(`퀴즈 '${quiz[0]}' → ${ok ? 'O' : 'X'} (입력 ${word}, ${cells.join('/')})`);
+  say(ok ? `정답입니다. ${quiz[0]}` : `틀렸어요. 입력한 것은 ${word || '없음'}, 정답은 ${quiz[0]} 입니다`);
+  setTimeout(newQuestion, ok ? 2500 : 5000);
+}
+
+// 소리로 읽을 때: 낱자(ㄱ, ㅏ)는 이름으로 바꿔 읽기
+const readable = w => [...w].map(ch => JAMO[ch] ? ` ${JAMO[ch]} ` : ch).join('').trim();
+
 function showHistory() {
+  $('partial').textContent = history.length ? composeBraille(history.map(h => h.cell), true) : '';
   $('hist').innerHTML = history.length
     ? history.map(h => `<div class="hc"><div class="l">${h.letter}</div><div class="p">${h.cell}</div></div>`).join('')
     : '<span class="note">아직 없어요</span>';
@@ -221,18 +272,19 @@ function handleLine(line) {
     $('res').textContent = '?'; $('cands').innerHTML = '';
     $('ressub').textContent += ' → 일치하는 점자가 없어요';
     history.push({ cell: lastCell, letter: '?' }); showHistory();
-    log(`완료 → 일치하는 점자 없음`); say(`${lastCell.split('').join(', ')}번 점. 일치하는 점자가 없어요`);
+    log(`칸 확정 → 일치하는 점자 없음`); say(`${lastCell.split('').join(', ')}번 점. 일치하는 점자가 없어요`);
     return;
   }
   if (line.startsWith('DEC ')) {
     const cands = line.slice(4).trim().split(/\s+/).map(x => x.split(':'));   // [['초성','ㄴ'], ...]
     $('res').textContent = cands.map(c => c[1]).filter((v, i, a) => a.indexOf(v) === i).slice(0, 3).join(' / ');
     $('cands').innerHTML = cands.map(([mo, le]) => `<span class="cand">${mo} <b>${le}</b></span>`).join('');
-    log(`완료 → ${cands.map(c => c.join(' ')).join(', ')}`);
     history.push({ cell: lastCell, letter: (cands.find(c => c[0] !== '영어') || cands[0])[1] }); showHistory();
+    log(`칸 확정 → ${cands.map(c => c.join(' ')).join(', ')}`);
     const ko = cands.filter(c => c[0] !== '영어');
     const dots = lastCell.split('').join(', ');
-    say(`${dots}번 점. ${(ko.length ? ko : cands).map(c => spoken(c[0], c[1])).join(', 또는 ')}`);
+    const partial = composeBraille(history.map(h => h.cell), true);   // 지금까지 조합한 글자
+    say(`${dots}번 점. ${readable(partial)}`);
     return;
   }
   m = line.match(/^PAIR\s+(\S+)\s+(\S+):(\S+)$/);
@@ -256,15 +308,19 @@ function handleLine(line) {
     say(h ? '앞 칸을 지웠어요' : '지울 칸이 없어요');
     return;
   }
-  if (line === 'NEXT') {                         // 다음 → 지금 낱말 끝내기
-    if (!history.length) { say('쓴 칸이 없어요'); return; }
-    const w = history.map(h => h.letter).join(' ');
-    words.unshift(`${w}  (${history.map(h => h.cell).join('/')})`);
-    $('words').innerHTML = words.slice(0, 10).map(x => `<div>${x}</div>`).join('');
-    log(`다음 → 낱말 끝: ${w}`);
-    say(`${history.map(h => JAMO[h.letter] || h.letter).join(', ')}. 다음 낱말을 쓰세요`);
+  if (line === 'DONE' || line === 'NEXT') {      // 완료 → 칸들을 조합해서 낱말 완성
+    const cells = history.map(h => h.cell);
+    const word = composeBraille(cells);
     history = []; showHistory();
-    $('res').textContent = '—'; $('cands').innerHTML = ''; $('ressub').textContent = '';
+    $('cands').innerHTML = ''; $('ressub').textContent = cells.join(' / ');
+    $('res').textContent = word || '—';
+    if (word) {
+      words.unshift(`${word}  (${cells.join('/')})`);
+      $('words').innerHTML = words.slice(0, 10).map(x => `<div>${x}</div>`).join('');
+    }
+    log(`완료 → 낱말: ${word || '(없음)'}`);
+    if (quiz) gradeWord(word, cells);
+    else say(word ? readable(word) : '쓴 칸이 없어요');
     return;
   }
   if (line === 'EMPTY') {
@@ -316,6 +372,12 @@ $('connect').addEventListener('click', () => {
   if (device && device.gatt.connected) device.gatt.disconnect();
   else connect();
 });
+$('qstart').addEventListener('click', () => {
+  if (quiz) { quiz = null; $('qword').textContent = '퀴즈 시작을 눌러 주세요'; $('ox').textContent = '';
+              $('qstart').textContent = '퀴즈 시작'; showScore(); say('퀴즈를 껐어요'); }
+  else { score = { o: 0, x: 0 }; newQuestion(); showScore(); }
+});
+$('qskip').addEventListener('click', () => { if (quiz) newQuestion(); });
 $('test').addEventListener('click', () => say('음성 피드백 테스트입니다'));
 </script>
 </body>
