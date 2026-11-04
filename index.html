@@ -100,6 +100,7 @@
       <label><input type="checkbox" id="sVow" checked> 모음</label>
       <label><input type="checkbox" id="sInit" checked> 첫소리</label>
       <label><input type="checkbox" id="sFin"> 받침</label>
+      <label><input type="checkbox" id="sAbbr"> 약자</label>
     </div>
     <div class="q" id="qword">퀴즈 시작을 눌러 주세요</div>
     <div class="ox" id="ox" aria-live="assertive"></div>
@@ -192,6 +193,17 @@ const WORDS = [   // 낱말, 정답 점자(여러 표기 가능: 약자 / 풀어
   ['감자',  ['4/126/26/46', '4/126/26/46/126']],
   ['학교',  ['245/126/1/4/346']],
   ['은행',  ['1356/245/1235/2356', '246/25/245/1235/2356']],
+  // 약어: 두 칸으로 줄여 쓰는 낱말 (풀어 쓴 것도 정답)
+  ['그래서',  ['1/234', '4/246/5/1235/6/234']],
+  ['그러나',  ['1/14', '4/246/5/234/14']],
+  ['그러면',  ['1/25', '4/246/5/234/15/16']],
+  ['그런데',  ['1/1345', '4/246/5/23456/24/1345']],
+  ['그리고',  ['1/136', '4/246/5/135/4/136']],
+  // 약자가 들어간 낱말
+  ['가방',  ['1246/45/126/2356']],
+  ['연필',  ['16/145/135/2']],
+  ['운동',  ['1245/24/123456']],
+  ['얼음',  ['2345/246/26']],
 ].map(([w, a]) => ({ kind: 'word', key: w, answers: a, prompt: `'${w}'를 써 보세요`, speak: `${w}, 를 써 보세요` }));
 
 // 기초 모드 문제: 낱자 하나 = 점자 한 칸
@@ -200,8 +212,13 @@ function basicItems() {
   const add = (map, cat, on) => on && Object.entries(map).forEach(([cell, j]) =>
     out.push({ kind: 'basic', key: `${cat} ${j}`, cell, prompt: `${cat} '${j}'`, speak: `${cat} ${JAMO[j] || j}, 를 써 보세요` }));
   add(VOW, '모음', $('sVow').checked); add(INIT, '첫소리', $('sInit').checked); add(FIN, '받침', $('sFin').checked);
+  if ($('sAbbr').checked) ABBR_ONE.forEach(([cell, w]) =>                 // 약자: 한 칸으로 쓰는 글자
+    out.push({ kind: 'basic', key: `약자 ${w}`, cell, prompt: `약자 '${w}'`, speak: `약자 ${w}, 를 한 칸으로 써 보세요` }));
   return out;
 }
+const ABBR_ONE = [['1246','가'],['14','나'],['24','다'],['15','마'],['45','바'],['123','사'],['46','자'],['124','카'],
+  ['125','타'],['145','파'],['245','하'],['1456','억'],['23456','언'],['2345','얼'],['16','연'],['1256','열'],['12456','영'],
+  ['1346','옥'],['12356','온'],['123456','옹'],['1245','운'],['12346','울'],['1356','은'],['2346','을'],['12345','인']];
 let quizMode = 'basic';
 function setMode(m) {
   quizMode = m;
@@ -490,7 +507,7 @@ $('qskip').addEventListener('click', () => { if (quiz) newQuestion(); });
 $('qagain').addEventListener('click', sayQuestion);
 $('mBasic').addEventListener('click', () => setMode('basic'));
 $('mWord').addEventListener('click', () => setMode('word'));
-['sVow', 'sInit', 'sFin'].forEach(id => $(id).addEventListener('change', () => { if (quiz && quizMode === 'basic') newQuestion(); }));
+['sVow', 'sInit', 'sFin', 'sAbbr'].forEach(id => $(id).addEventListener('change', () => { if (quiz && quizMode === 'basic') newQuestion(); }));
 $('test').addEventListener('click', () => say('음성 피드백 테스트입니다'));
 </script>
 </body>
