@@ -121,8 +121,17 @@ function log(line) {
   if (el.textContent.length > 6000) el.textContent = el.textContent.slice(0, 6000);
 }
 
+// 빨리 툭 눌러도 눈에 보이도록 최소 300ms는 켜 두기
+const litUntil = {};
+function setDot(k, on) {
+  const el = $('d' + k); if (!el) return;
+  if (on) { el.classList.add('on'); litUntil[k] = performance.now() + 300; return; }
+  const wait = (litUntil[k] || 0) - performance.now();
+  if (wait > 0) setTimeout(() => setDot(k, false), wait);
+  else el.classList.remove('on');
+}
 function showDots(bits) {           // bits: '111110' (0 = 눌림)
-  for (let i = 0; i < 6; i++) $('d' + (i + 1)).classList.toggle('on', bits[i] === '0');
+  for (let i = 0; i < 6; i++) setDot(i + 1, bits[i] === '0');
 }
 
 function handleLine(line) {
@@ -138,17 +147,18 @@ function handleLine(line) {
   m = line.match(/^K(\d)\s+(DOWN|UP)\s+(\d+)$/);
   if (m) {
     const k = +m[1], down = m[2] === 'DOWN', t = +m[3];
-    $('d' + k)?.classList.toggle('on', down);
+    setDot(k, down);
     if (down) {
       downAt[k] = t;
       $('last').textContent = `${k}번 점`;
-      $('lastsub').textContent = '누름';
+      $('lastsub').textContent = '누르는 중';
       say(`${k}번`);
     } else if (downAt[k] !== undefined) {
       const ms = ((t - downAt[k]) >>> 0) / 1000;   // µs → ms (타이머 넘침 대비)
       $('lastsub').textContent = `${ms.toFixed(0)} ms 동안 누름`;
+      log(`${k}번 점 · ${ms.toFixed(0)}ms`);         // 한 번 누를 때 한 줄만
+      delete downAt[k];
     }
-    log(line);
     return;
   }
   log(line);   // 그 밖의 메시지(앞으로 추가할 피드백 등)
