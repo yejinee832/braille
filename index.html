@@ -52,8 +52,22 @@
   .quiz .ox { font-size: 96px; font-weight: 900; text-align: center; line-height: 1.1; min-height: 106px; }
   .ox.o { color: var(--ok); } .ox.x { color: var(--bad); }
   .quiz .info { text-align: center; font-size: 16px; min-height: 48px; }
-  .quiz .btns { display: flex; gap: 10px; margin-top: 10px; }
+  .quiz .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
   .quiz .btns .btn { min-height: 52px; font-size: 18px; }
+  .menuTitle { font-size: 18px; color: var(--muted); margin: 4px 0 10px; }
+  .btn.menu { display: flex; flex-direction: column; align-items: flex-start; text-align: left; min-height: 96px;
+              padding: 14px 18px 14px 74px; margin-bottom: 12px; position: relative; font-size: 26px; background: var(--card);
+              color: var(--text); border: 2px solid var(--line); }
+  .btn.menu .num { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); width: 42px; height: 42px;
+                   border-radius: 50%; background: var(--accent); color: #111; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+  .btn.menu small { font-size: 15px; color: var(--muted); font-weight: 500; }
+  .nav { display: flex; gap: 6px; margin-bottom: 14px; position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 6px 0; }
+  .nav .btn { min-height: 50px; font-size: 15px; padding: 0 4px; }
+  .nav .btn.cur { background: var(--accent); color: #111; }
+  .center { text-align: center; }
+  .scr { display: none; }
+  details.more summary { cursor: pointer; font-size: 17px; color: var(--muted); padding: 4px 0; }
+  details.more[open] summary { margin-bottom: 10px; }
   .modes { display: flex; gap: 10px; margin: 4px 0 10px; }
   .modes .btn { min-height: 52px; font-size: 18px; }
   .subs { display: flex; gap: 16px; justify-content: center; margin-bottom: 8px; font-size: 17px; }
@@ -90,8 +104,28 @@
     <span id="sdot" class="dot-s"></span><span id="stext">연결 안 됨</span>
   </div>
 
-  <section class="card quiz" aria-label="퀴즈">
-    <h2>퀴즈 <span id="score" style="float:right"></span></h2>
+  <nav id="nav" class="nav" style="display:none" aria-label="모드 이동">
+    <button id="goBack" class="btn off">← 이전</button>
+    <button id="tQuiz" class="btn off">1 퀴즈</button>
+    <button id="tFree" class="btn off">2 자유</button>
+    <button id="tStats" class="btn off">3 기록</button>
+    <button id="goHome" class="btn off">처음</button>
+  </nav>
+
+  <!-- ===== 처음 화면: 모드 고르기 ===== -->
+  <section id="scrHome" aria-label="모드 고르기">
+    <h2 class="menuTitle">모드를 고르세요</h2>
+    <button class="btn menu" id="goQuiz"><span class="num">1</span>퀴즈<small>기초 · 단어 문제 풀기</small></button>
+    <button class="btn menu" id="goFree"><span class="num">2</span>자유 쓰기<small>쓰면 어떻게 읽히는지 들려줘요</small></button>
+    <button class="btn menu" id="goStats"><span class="num">3</span>나의 기록<small>자주 틀리는 패턴</small></button>
+    <p class="note center">점자기로도 고를 수 있어요: <b>1번 점 + 다음</b> = 퀴즈, <b>2번 점 + 다음</b> = 자유 쓰기, <b>3번 점 + 다음</b> = 나의 기록.<br>
+    쓴 칸이 없을 때 <b>지우기</b> = 이전 화면, <b>완료</b> = 처음 화면.<br>
+    퀴즈에서 <b>지우기를 두 번</b> 누르면 정답을 읽어 줘요.<br>퀴즈는 다른 모드에 다녀와도 이어서 풀 수 있어요.</p>
+  </section>
+
+  <!-- ===== 1. 퀴즈 ===== -->
+  <section class="card quiz scr" id="scrQuiz" aria-label="퀴즈">
+    <h2>1. 퀴즈 <span id="score" style="float:right"></span></h2>
     <div class="modes" role="group" aria-label="퀴즈 모드">
       <button id="mBasic" class="btn" aria-pressed="true">기초 모드</button>
       <button id="mWord" class="btn off" aria-pressed="false">단어 모드</button>
@@ -108,55 +142,58 @@
     <div class="btns">
       <button id="qstart" class="btn">퀴즈 시작</button>
       <button id="qagain" class="btn off">다시 듣기</button>
+      <button id="qans" class="btn off">정답 보기</button>
       <button id="qskip" class="btn off">다른 문제</button>
     </div>
   </section>
 
-  <section class="card" aria-label="나의 오류 패턴">
-    <h2>나의 오류 패턴</h2>
-    <div id="pattern" class="note">퀴즈를 풀면 자주 틀리는 유형이 여기에 쌓여요</div>
-  </section>
-
-  <section class="card" aria-label="현재 누른 점">
-    <h2>점자 칸</h2>
-    <div class="cell" id="cell">
-      <div class="bd" id="d1">1</div><div class="bd" id="d2">2</div><div class="bd" id="d3">3</div>
-      <div class="bd" id="d4">4</div><div class="bd" id="d5">5</div><div class="bd" id="d6">6</div>
-    </div>
-    <div class="legend">노란 원 = 누르는 중 · 노란 테두리 = 모은 점</div>
-  </section>
-
-  <section class="card" aria-label="해석 결과">
-    <h2>해석 결과 (다음 버튼을 누르면 나와요)</h2>
-    <div class="res" id="res" aria-live="assertive">—</div>
-    <div class="ressub" id="ressub"></div>
-    <div class="cands" id="cands"></div>
-  </section>
-
-  <section class="card" aria-label="쓴 칸">
-    <h2>쓴 칸 → <span id="partial" style="color:var(--text);font-size:20px"></span></h2>
-    <div class="hist" id="hist"><span class="note">아직 없어요</span></div>
-    <h2 style="margin-top:16px">완성한 낱말 (완료 버튼)</h2>
+  <!-- ===== 2. 자유 쓰기 ===== -->
+  <section class="card scr" id="scrFree" aria-label="자유 쓰기">
+    <h2>2. 자유 쓰기</h2>
+    <div class="res" id="freeWord" aria-live="assertive">—</div>
+    <div class="info center" id="freeInfo">점을 누르고 <b>다음</b>(칸 확정), 다 썼으면 <b>완료</b>를 누르세요.<br>"하늘 입니다"처럼 읽어 줘요.</div>
+    <h2 style="margin-top:14px">지금까지 쓴 낱말</h2>
     <div id="words" class="note">아직 없어요</div>
   </section>
 
-  <section class="card" aria-label="모은 점">
-    <h2>모은 점</h2>
-    <div class="last" id="last" aria-live="assertive">—</div>
-    <div class="lastsub" id="lastsub"></div>
+  <!-- ===== 퀴즈·자유 쓰기 공통: 쓰는 중인 칸 ===== -->
+  <div id="work" class="scr">
+    <section class="card" aria-label="점자 칸">
+      <h2>점자 칸</h2>
+      <div class="cell" id="cell">
+        <div class="bd" id="d1">1</div><div class="bd" id="d2">2</div><div class="bd" id="d3">3</div>
+        <div class="bd" id="d4">4</div><div class="bd" id="d5">5</div><div class="bd" id="d6">6</div>
+      </div>
+      <div class="legend">노란 원 = 누르는 중 · 노란 테두리 = 모은 점</div>
+    </section>
+    <section class="card" aria-label="쓴 칸">
+      <h2>쓴 칸 → <span id="partial" style="color:var(--text);font-size:20px"></span></h2>
+      <div class="hist" id="hist"><span class="note">아직 없어요</span></div>
+    </section>
+  </div>
+
+  <!-- ===== 3. 나의 기록 ===== -->
+  <section class="card scr" id="scrStats" aria-label="나의 기록">
+    <h2>3. 나의 기록 (오류 패턴)</h2>
+    <div id="pattern" class="note">퀴즈를 풀면 자주 틀리는 유형이 여기에 쌓여요</div>
   </section>
 
-  <section class="card">
-    <h2>설정</h2>
+  <!-- ===== 자세히 (개발·설정용) ===== -->
+  <details class="card more">
+    <summary>설정 · 자세히</summary>
     <label class="row"><input type="checkbox" id="speak" checked> 음성으로 읽어 주기</label>
     <label class="row"><input type="checkbox" id="hidePins" checked> 기록에서 PINS·ping 숨기기</label>
-    <button id="test" class="btn off" style="min-height:52px;font-size:18px;margin-top:10px">음성 테스트</button>
-  </section>
-
-  <section class="card">
-    <h2>받은 기록</h2>
+    <button id="test" class="btn off" style="min-height:52px;font-size:18px;margin:10px 0">음성 테스트</button>
+    <h2>칸 해석 결과</h2>
+    <div class="res" id="res" style="font-size:36px;min-height:50px">—</div>
+    <div class="ressub" id="ressub"></div>
+    <div class="cands" id="cands"></div>
+    <h2 style="margin-top:12px">모은 점</h2>
+    <div class="last" id="last">—</div>
+    <div class="lastsub" id="lastsub"></div>
+    <h2 style="margin-top:12px">받은 기록</h2>
     <pre id="log"></pre>
-  </section>
+  </details>
 
   <p class="note">안드로이드 <b>크롬</b>에서 열어 주세요. 삼성 인터넷과 아이폰은 블루투스 웹 연결을 지원하지 않아요.
   nRF Connect 앱이 연결돼 있으면 먼저 끊어 주세요.</p>
@@ -225,11 +262,72 @@ function setMode(m) {
   $('mBasic').classList.toggle('off', m !== 'basic'); $('mBasic').setAttribute('aria-pressed', m === 'basic');
   $('mWord').classList.toggle('off', m !== 'word');   $('mWord').setAttribute('aria-pressed', m === 'word');
   $('subs').style.display = m === 'basic' ? 'flex' : 'none';
-  if (quiz) newQuestion();
-  else say(m === 'basic' ? '기초 모드' : '단어 모드');
+  if (screen === 'quiz') newQuestion();
 }
 
 let quiz = null, score = { o: 0, x: 0 }, qnum = 0;
+let screen = 'home', ignoreDec = false;
+
+// ---- 화면 이동: 처음 화면 / 1 퀴즈 / 2 자유 쓰기 / 3 나의 기록 ----
+function stopQuiz() {
+  quiz = null; $('qword').textContent = '퀴즈 시작을 눌러 주세요'; $('ox').textContent = '';
+  $('qinfo').innerHTML = ''; $('qstart').textContent = '퀴즈 시작'; showScore();
+}
+const NAMES = { home: '처음 화면', quiz: '퀴즈', free: '자유 쓰기', stats: '나의 기록' };
+let backStack = [], paused = null;        // 이전 화면 기록, 잠시 멈춘 퀴즈
+function go(name, isBack) {
+  if (name === screen) return;
+  if (!isBack) backStack.push(screen);
+  if (backStack.length > 20) backStack.shift();
+  if (screen === 'quiz' && quiz) { paused = quiz; quiz = null; }   // 퀴즈는 멈춰 두고 나중에 이어서
+  screen = name;
+  history = []; showHistory(); collected.clear(); showCollected();
+  $('scrHome').style.display  = name === 'home'  ? 'block' : 'none';
+  $('scrQuiz').style.display  = name === 'quiz'  ? 'block' : 'none';
+  $('scrFree').style.display  = name === 'free'  ? 'block' : 'none';
+  $('work').style.display     = name === 'quiz' || name === 'free' ? 'block' : 'none';
+  $('scrStats').style.display = name === 'stats' ? 'block' : 'none';
+  $('nav').style.display      = name === 'home'  ? 'none'  : 'flex';
+  $('tQuiz').classList.toggle('cur', name === 'quiz'); $('tFree').classList.toggle('cur', name === 'free');
+  $('tStats').classList.toggle('cur', name === 'stats');
+  window.scrollTo(0, 0);
+  if (name === 'home')  say('처음 화면입니다. 퀴즈는 1번, 자유 쓰기는 2번, 나의 기록은 3번 점을 누르고 다음을 누르세요');
+  if (name === 'quiz') {
+    if (paused) { quiz = paused; paused = null; $('qstart').textContent = '퀴즈 끄기'; $('ox').textContent = '';
+                  $('qword').textContent = quiz.prompt + (quiz.kind === 'basic' ? '를 써 보세요' : '');
+                  $('qinfo').innerHTML = '이어서 풀어요. 모르면 <b>지우기를 두 번</b> 누르면 정답을 읽어 줘요';
+                  say(`퀴즈로 돌아왔어요. 문제 ${qnum}번. ${quiz.speak}`); }               // 이어서 풀기
+    else { score = { o: 0, x: 0 }; newQuestion(); showScore(); }                         // 처음이면 바로 시작
+  }
+  if (name === 'free')  { $('freeWord').textContent = '—'; say('자유 쓰기입니다. 쓰고 싶은 낱말을 쓰고 완료를 누르세요'); }
+  if (name === 'stats') { showPattern(); say(statsSpeech()); }
+}
+// ---- 정답 보기: 모를 때 정답을 읽어 주기 (틀린 것으로 세서 다시 자주 냄) ----
+let lastEmptyBack = -1e9;
+const ORD = ['첫째', '둘째', '셋째', '넷째', '다섯째', '여섯째', '일곱째', '여덟째', '아홉째', '열째'];
+function showAnswer() {
+  if (!quiz) return;
+  const cells = quiz.kind === 'basic' ? [quiz.cell] : quiz.answers[0].split('/');
+  const spoken = cells.length === 1
+    ? `${cells[0].split('').join(', ')}번 점`
+    : cells.map((c, i) => `${ORD[i] || (i + 1) + '번째'} 칸, ${c.split('').join(', ')}번`).join('. ');
+  Diagnose.stats.words[quiz.key] = (Diagnose.stats.words[quiz.key] || 0) + 1;      // 다시 자주 나오게
+  Diagnose.stats.types['정답 보기'] = (Diagnose.stats.types['정답 보기'] || 0) + 1;
+  showPattern();
+  history = []; showHistory();
+  $('ox').textContent = '?'; $('ox').className = 'ox';
+  $('qinfo').innerHTML = `정답: <b>${cells.join(' / ')}</b><br>들은 대로 다시 써 보세요`;
+  log(`정답 보기 '${quiz.key}' → ${cells.join('/')}`);
+  say(`${readable(quiz.key)}, 정답은 ${spoken}. 들은 대로 다시 써 보세요`);
+}
+function goBack() { go(backStack.length ? backStack.pop() : 'home', true); }
+function statsSpeech() {
+  const st = Diagnose.stats;
+  if (!st.total) return '나의 기록입니다. 아직 푼 문제가 없어요';
+  const t = Diagnose.top(st.types, 1)[0], l = Diagnose.top(st.letters, 1)[0];
+  return `나의 기록입니다. 푼 문제 ${st.total}개, 틀린 문제 ${st.wrong}개.`
+    + (t ? ` 가장 많이 틀린 유형은 ${t[0]}.` : '') + (l ? ` 자주 틀리는 글자는 ${readable(l[0])}.` : '');
+}
 const sayQuestion = () => quiz && say(`문제 ${qnum}번. ${quiz.speak}`);
 function newQuestion() {
   let all = quizMode === 'basic' ? basicItems() : WORDS;
@@ -288,7 +386,8 @@ function finishGrade(ok, errors, okHtml, xHtml, okSay, xSay, logText) {
     say(xSay + first);
   }
   log(`퀴즈 '${quiz.key}' → ${ok ? 'O' : 'X'} (${logText})${errors.map(e => ' · ' + e.type).join('')}`);
-  setTimeout(() => { if (quiz) newQuestion(); }, ok ? 3000 : 8000);
+  const thisQ = quiz;
+  setTimeout(() => { if (quiz && quiz === thisQ && screen === 'quiz') newQuestion(); }, ok ? 3000 : 8000);
 }
 
 // 자주 틀리는 유형·글자 보여 주기
@@ -384,7 +483,16 @@ function handleLine(line) {
   }
   // ---- 완료 버튼을 눌렀을 때 STM32가 보내는 해석 결과 ----
   m = line.match(/^CELL\s+([1-6]+)$/);
+  if (m && (screen === 'home' || screen === 'stats')) {   // 처음 화면: 점자기로 모드 고르기
+    ignoreDec = true;                                     // 바로 뒤따라오는 DEC·PAIR는 무시
+    collected.clear(); showCollected();
+    const pick = { '1': 'quiz', '2': 'free', '3': 'stats' }[m[1]];
+    if (pick) go(pick); else say('1번, 2번, 3번 점 중에 하나를 누르고 다음을 누르세요');
+    return;
+  }
+  if (ignoreDec && /^(DEC|PAIR)/.test(line)) return;
   if (m) {
+    ignoreDec = false;
     lastCell = m[1];
     $('ressub').textContent = `입력한 점: ${m[1].split('').join(' · ')}`;
     collected.clear(); showCollected(); $('lastsub').textContent = '';
@@ -416,7 +524,7 @@ function handleLine(line) {
   if (m) {
     $('cands').insertAdjacentHTML('afterbegin', `<span class="cand">두 칸 ${m[1]} → ${m[2]} <b>${m[3]}</b></span>`);
     log(`두 칸 ${m[1]} → ${m[2]} ${m[3]}`);
-    if (!quiz) setTimeout(() => say(`두 칸으로 읽으면 ${m[3]}`), 1800);
+    if (screen === 'free') setTimeout(() => say(`두 칸으로 읽으면 ${m[3]}`), 1800);
     return;
   }
   m = line.match(/^CLEAR\s+([1-6]+)$/);
@@ -426,6 +534,12 @@ function handleLine(line) {
     return;
   }
   if (line === 'BACK') {                         // 완료 후에 지우기 → 마지막 칸 지움
+    if (!history.length && screen === 'quiz' && quiz) {                // 퀴즈: 지우기 두 번 = 정답 보기
+      if (performance.now() - lastEmptyBack < 3000) { lastEmptyBack = -1e9; showAnswer(); }
+      else { lastEmptyBack = performance.now(); say('정답을 들으려면 지우기를 한 번 더 누르세요'); }
+      return;
+    }
+    if (!history.length && screen !== 'home') { goBack(); return; }     // 지울 게 없으면 이전 화면으로
     const h = history.pop(); showHistory();
     $('res').textContent = '—'; $('cands').innerHTML = '';
     $('ressub').textContent = h ? `앞 칸(${h.letter}) 지움` : '지울 칸이 없어요';
@@ -434,6 +548,7 @@ function handleLine(line) {
     return;
   }
   if (line === 'DONE' || line === 'NEXT') {      // 완료 → 칸들을 조합해서 낱말 완성
+    if (!history.length && screen !== 'home' && !(quiz && quiz.kind === 'basic')) { go('home'); return; }  // 쓴 게 없으면 처음 화면
     const cells = history.map(h => h.cell);
     const word = composeBraille(cells);
     history = []; showHistory();
@@ -446,7 +561,11 @@ function handleLine(line) {
     log(`완료 → 낱말: ${word || '(없음)'}`);
     if (quiz && quiz.kind === 'word') gradeWord(word, cells);
     else if (quiz) say('기초 모드에서는 다음 버튼을 누르면 채점돼요');
-    else say(word ? readable(word) : '쓴 칸이 없어요');
+    else if (screen === 'free') {
+      $('freeWord').textContent = word || '—';
+      $('freeInfo').innerHTML = word ? `"${word}" 입니다 <span class="note">(${cells.join(' / ')})</span>` : '쓴 칸이 없어요';
+      say(word ? `${readable(word)}, 입니다` : '쓴 칸이 없어요');
+    }
     return;
   }
   if (line === 'EMPTY') {
@@ -499,15 +618,24 @@ $('connect').addEventListener('click', () => {
   else connect();
 });
 $('qstart').addEventListener('click', () => {
-  if (quiz) { quiz = null; $('qword').textContent = '퀴즈 시작을 눌러 주세요'; $('ox').textContent = '';
-              $('qstart').textContent = '퀴즈 시작'; showScore(); say('퀴즈를 껐어요'); }
+  if (quiz) { stopQuiz(); paused = null; say('퀴즈를 껐어요'); }
   else { score = { o: 0, x: 0 }; newQuestion(); showScore(); }
 });
 $('qskip').addEventListener('click', () => { if (quiz) newQuestion(); });
+$('goHome').addEventListener('click', () => go('home'));
+$('goBack').addEventListener('click', goBack);
+$('qans').addEventListener('click', showAnswer);
+$('tQuiz').addEventListener('click', () => go('quiz'));
+$('tFree').addEventListener('click', () => go('free'));
+$('tStats').addEventListener('click', () => go('stats'));
+$('goQuiz').addEventListener('click', () => go('quiz'));
+$('goFree').addEventListener('click', () => go('free'));
+$('goStats').addEventListener('click', () => go('stats'));
 $('qagain').addEventListener('click', sayQuestion);
 $('mBasic').addEventListener('click', () => setMode('basic'));
 $('mWord').addEventListener('click', () => setMode('word'));
 ['sVow', 'sInit', 'sFin', 'sAbbr'].forEach(id => $(id).addEventListener('change', () => { if (quiz && quizMode === 'basic') newQuestion(); }));
+go('home');
 $('test').addEventListener('click', () => say('음성 피드백 테스트입니다'));
 </script>
 </body>
