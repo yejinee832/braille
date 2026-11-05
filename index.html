@@ -83,7 +83,10 @@
   .stagebar span.cur { background: var(--accent); color: #111; font-weight: 800; }
   .mrow { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 15px; }
   .mrow .k { width: 92px; } .mrow .bg { flex: 1; height: 12px; background: var(--line); border-radius: 6px; overflow: hidden; }
-  .mrow .fg { height: 100%; border-radius: 6px; } .mrow .v { width: 40px; text-align: right; }
+  .mrow .fg { height: 100%; border-radius: 6px; } .mrow .v { width: 96px; text-align: right; font-size: 13px; }
+  .mrow .bg { position: relative; } .mrow .ci { position: absolute; top: 4px; height: 4px; background: #e9ecef; opacity: .9; border-radius: 2px; }
+  .rep { margin: 8px 0; padding: 10px 12px; border-radius: 12px; background: #20262e; font-size: 15px; line-height: 1.5; }
+  .rep b.w { color: #ff8787; } .rep b.u { color: #ffd23f; } .rep b.s { color: #3ddc97; }
   table.days { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 6px; }
   table.days th, table.days td { border-bottom: 1px solid var(--line); padding: 4px; text-align: center; }
   .hints { margin: 8px 0 0; padding-left: 20px; font-size: 16px; text-align: left; }
@@ -197,6 +200,8 @@
   <section class="card scr" id="scrStats" aria-label="나의 기록">
     <h2>3. 나의 기록 (오류 패턴)</h2>
     <div id="pattern" class="note">퀴즈를 풀면 자주 틀리는 유형이 여기에 쌓여요</div>
+    <h2 style="margin-top:16px">분석 리포트 (베타 분포)</h2>
+    <div id="report" class="note">문제를 몇 개 풀면 분석 결과가 나와요</div>
     <h2 style="margin-top:16px">단계와 숙련도</h2>
     <div id="mastery" class="note">아직 기록이 없어요</div>
     <h2 style="margin-top:16px">날짜별 기록</h2>
@@ -230,7 +235,7 @@
 
 <script src="compose.js"></script>
 <script src="diagnose.js"></script>
-<script src="learn.js"></script>
+<script src="learn.js?v=2"></script>
 <script>
 const SVC = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // ESP32 → 폰 (notify)
@@ -358,7 +363,7 @@ function statsSpeech() {
   const t = Object.entries(L.types).sort((a, b) => b[1] - a[1])[0];
   const weak = Object.keys(L.items).map(k => [k, Learn.mastery(k)]).sort((a, b) => a[1] - b[1])[0];
   return `나의 기록입니다. 지금 단계는 ${Learn.STAGES[L.stage]}. 푼 문제 ${total}개, 틀린 문제 ${wrong}개.`
-    + (t ? ` 가장 많이 틀린 유형은 ${t[0]}.` : '') + (weak ? ` 가장 약한 문제는 ${readable(weak[0])}.` : '');
+    + (t ? ` 가장 많이 틀린 유형은 ${t[0]}.` : '') + (((reportLines().find(l => l.say) || {}).say) ? ' ' + reportLines().find(l => l.say).say : (weak ? ` 가장 약한 문제는 ${readable(weak[0])}.` : ''));
 }
 const sayQuestion = () => quiz && say(`문제 ${qnum}번. ${quiz.speak}`);
 // 단계별 문제 목록
@@ -384,12 +389,16 @@ function newQuestion() {
   applyStage();
   let all = quizMode === 'basic' ? basicItems() : WORDS;
   if (!all.length) { $('sVow').checked = true; all = basicItems(); }   // 아무것도 안 골랐으면 모음
-  // 숙련도가 낮을수록 자주 나와요 (가중치 = 1 + 6 × (1 − 숙련도)). 자동 단계에서는 지금 단계 문제를 2배로
+  // 톰슨 샘플링: 문제마다 Beta(α, β)에서 값을 하나 뽑아 가장 낮은 문제를 냄
+  //   약한 문제(평균이 낮음)와 아직 덜 푼 문제(분포가 넓음)가 자연스럽게 자주 나옴
+  //   자동 단계에서는 지금 단계 문제에 0.15를 빼 줘서 더 자주 나오게
   const cur = Learn.STAGES[Learn.L.stage];
   const pool = all.filter(x => !quiz || x.key !== quiz.key);
-  const w = pool.map(x => (1 + 6 * (1 - Learn.mastery(x.key))) * ($('autoStage').checked && Learn.catOf(x.key) === cur ? 2 : 1));
-  let r = Math.random() * w.reduce((a, b) => a + b, 0), q = pool[0];
-  for (let i = 0; i < pool.length; i++) { r -= w[i]; if (r <= 0) { q = pool[i]; break; } }
+  let q = pool[0], best = Infinity;
+  for (const x of pool) {
+    const v = Learn.sample(x.key) - ($('autoStage').checked && Learn.catOf(x.key) === cur ? 0.15 : 0);
+    if (v < best) { best = v; q = x; }
+  }
   quiz = q;
   $('qword').textContent = q.prompt + (q.kind === 'basic' ? '를 써 보세요' : '');
   $('ox').textContent = ''; $('ox').className = 'ox';
@@ -464,13 +473,18 @@ function showPattern() {
   }
   // 단계와 숙련도: 지금 단계 진행률 + 가장 약한 문제
   const st = L.stage, cat = Learn.STAGES[st], keys = itemsOfCat(cat).map(x => x.key);
+  showReport();
   const seen = Object.keys(L.items);
   const weak = seen.map(k => [k, Learn.mastery(k)]).sort((a, b) => a[1] - b[1]).slice(0, 8);
   const col = v => v >= 0.75 ? '#3ddc97' : v >= 0.5 ? '#ffd23f' : '#ff6b6b';
   $('mastery').innerHTML = `<div>지금 단계: <b>${st + 1}. ${cat}</b> · 평균 숙련도 <b>${(Learn.mean(keys) * 100).toFixed(0)}%</b>
-      (통과 기준 ${Learn.PASS * 100}%, 푼 문제 ${keys.filter(k => L.items[k]).length}/${keys.length})</div>` +
-    (weak.length ? `<div style="margin-top:8px">숙련도가 낮은 문제</div>` + weak.map(([k, v]) =>
-      `<div class="mrow"><span class="k">${k}</span><span class="bg"><span class="fg" style="display:block;width:${v * 100}%;background:${col(v)}"></span></span><span class="v">${(v * 100).toFixed(0)}%</span></div>`).join('') : '');
+      · 통과 확률 <b>${(Learn.stageProb(keys) * 100).toFixed(0)}%</b>
+      <br><span class="note">통과 조건: 모든 문제를 한 번 이상 풀고, 실력이 ${Learn.PASS * 100}%를 넘을 확률 ${Learn.CONF * 100}% 이상 (푼 문제 ${keys.filter(k => L.items[k]).length}/${keys.length})</span></div>` +
+    (weak.length ? `<div style="margin-top:8px">숙련도가 낮은 문제 <span class="note">(막대 = 평균, 흰 선 = 95% 신뢰 구간)</span></div>` + weak.map(([k, v]) => {
+      const [lo, hi] = Learn.ci(k);
+      return `<div class="mrow"><span class="k">${k}</span><span class="bg"><span class="fg" style="display:block;width:${v * 100}%;background:${col(v)}"></span>` +
+        `<span class="ci" style="left:${lo * 100}%;width:${(hi - lo) * 100}%"></span></span>` +
+        `<span class="v">${(v * 100).toFixed(0)}% (${(lo * 100).toFixed(0)}~${(hi * 100).toFixed(0)})</span></div>`; }).join('') : '');
   // 날짜별 기록 + 오류율 그래프
   if (days.length) {
     const W = 300, H = 90, pts = days.map(([, v], i) => [days.length === 1 ? W / 2 : 20 + i * (W - 40) / (days.length - 1), H - 15 - (v.w / v.n) * (H - 30)]);
@@ -481,6 +495,25 @@ function showPattern() {
     $('daily').innerHTML = `<div>날짜별 오류율</div>${svg}<table class="days"><tr><th>날짜</th><th>푼 문제</th><th>오류율</th><th>평균 시간</th><th>망설임</th></tr>` +
       days.slice(-7).map(([d, v]) => `<tr><td>${d.slice(5)}</td><td>${v.n}</td><td>${(v.w / v.n * 100).toFixed(0)}%</td><td>${(v.t / v.n).toFixed(1)}초</td><td>${v.slow || 0}</td></tr>`).join('') + '</table>';
   }
+}
+
+// 분석 리포트: 확실히 약한 글자 / 아직 판단 이른 글자 / 익힌 글자 + 연습 방법
+function reportLines() {
+  const r = Learn.report(), lines = [], pct = x => (x * 100).toFixed(0);
+  for (const x of r.weak.slice(0, 3))
+    lines.push({ cls: 'w', head: '확실히 약해요', text: `${x.key}: 숙련도 ${pct(x.m)}% (95% 구간 ${pct(x.lo)}~${pct(x.hi)}%)` +
+      (x.topErr ? `. 주로 ${x.topErr}. ${x.tip}` : ''), say: `${readable(x.key)}는 확실히 약해요.` + (x.tip ? ` ${x.tip}` : '') });
+  for (const x of r.unsure.slice(0, 2))
+    lines.push({ cls: 'u', head: '아직 판단하기 일러요', text: `${x.key}: ${x.n}번 풀었어요. 구간이 ${pct(x.lo)}~${pct(x.hi)}%로 넓어서 몇 번 더 풀어 봐야 알 수 있어요`, say: '' });
+  if (r.strong.length)
+    lines.push({ cls: 's', head: '익혔어요', text: r.strong.slice(0, 6).map(x => x.key).join(', ') + ` (95% 구간 아래쪽 끝도 ${Learn.PASS * 100}% 이상)`, say: '' });
+  return lines;
+}
+function showReport() {
+  const lines = reportLines();
+  $('report').innerHTML = lines.length
+    ? lines.map(l => `<div class="rep"><b class="${l.cls}">${l.head}</b><br>${l.text}</div>`).join('')
+    : '문제를 몇 개 더 풀면 분석 결과가 나와요';
 }
 
 // 소리로 읽을 때: 낱자(ㄱ, ㅏ)는 이름으로 바꿔 읽기
