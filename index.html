@@ -77,6 +77,15 @@
   .subs { display: flex; gap: 16px; justify-content: center; margin-bottom: 8px; font-size: 17px; }
   .subs label { display: flex; gap: 6px; align-items: center; }
   .subs input { width: 22px; height: 22px; }
+  .stagebar { display: flex; gap: 4px; margin: 2px 0 10px; }
+  .stagebar span { cursor: pointer; flex: 1; text-align: center; font-size: 14px; padding: 6px 0; border-radius: 8px; background: var(--line); color: var(--muted); }
+  .stagebar span.done { background: #2b5d45; color: #fff; }
+  .stagebar span.cur { background: var(--accent); color: #111; font-weight: 800; }
+  .mrow { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 15px; }
+  .mrow .k { width: 92px; } .mrow .bg { flex: 1; height: 12px; background: var(--line); border-radius: 6px; overflow: hidden; }
+  .mrow .fg { height: 100%; border-radius: 6px; } .mrow .v { width: 40px; text-align: right; }
+  table.days { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 6px; }
+  table.days th, table.days td { border-bottom: 1px solid var(--line); padding: 4px; text-align: center; }
   .hints { margin: 8px 0 0; padding-left: 20px; font-size: 16px; text-align: left; }
   .hints li { margin: 4px 0; }
   .hints .t { color: var(--accent); font-weight: 700; }
@@ -138,6 +147,10 @@
       <button id="mBasic" class="btn" aria-pressed="true">기초 모드</button>
       <button id="mWord" class="btn off" aria-pressed="false">단어 모드</button>
     </div>
+    <div class="stage" id="stageBox">
+      <label class="row" style="justify-content:center"><input type="checkbox" id="autoStage" checked> 단계 자동 진행</label>
+      <div id="stageBar" class="stagebar"></div>
+    </div>
     <div class="subs" id="subs">
       <label><input type="checkbox" id="sVow" checked> 모음</label>
       <label><input type="checkbox" id="sInit" checked> 첫소리</label>
@@ -184,6 +197,14 @@
   <section class="card scr" id="scrStats" aria-label="나의 기록">
     <h2>3. 나의 기록 (오류 패턴)</h2>
     <div id="pattern" class="note">퀴즈를 풀면 자주 틀리는 유형이 여기에 쌓여요</div>
+    <h2 style="margin-top:16px">단계와 숙련도</h2>
+    <div id="mastery" class="note">아직 기록이 없어요</div>
+    <h2 style="margin-top:16px">날짜별 기록</h2>
+    <div id="daily" class="note">아직 기록이 없어요</div>
+    <div class="btns" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+      <button id="csvBtn" class="btn off" style="min-height:52px;font-size:17px">기록 내보내기 (CSV)</button>
+      <button id="resetBtn" class="btn off" style="min-height:52px;font-size:17px">기록 지우기</button>
+    </div>
   </section>
 
   <!-- ===== 자세히 (개발·설정용) ===== -->
@@ -209,6 +230,7 @@
 
 <script src="compose.js"></script>
 <script src="diagnose.js"></script>
+<script src="learn.js"></script>
 <script>
 const SVC = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // ESP32 → 폰 (notify)
@@ -330,19 +352,42 @@ function showAnswer() {
 }
 function goBack() { go(backStack.length ? backStack.pop() : 'home', true); }
 function statsSpeech() {
-  const st = Diagnose.stats;
-  if (!st.total) return '나의 기록입니다. 아직 푼 문제가 없어요';
-  const t = Diagnose.top(st.types, 1)[0], l = Diagnose.top(st.letters, 1)[0];
-  return `나의 기록입니다. 푼 문제 ${st.total}개, 틀린 문제 ${st.wrong}개.`
-    + (t ? ` 가장 많이 틀린 유형은 ${t[0]}.` : '') + (l ? ` 자주 틀리는 글자는 ${readable(l[0])}.` : '');
+  const L = Learn.L, days = Object.values(L.days);
+  const total = days.reduce((s, v) => s + v.n, 0), wrong = days.reduce((s, v) => s + v.w, 0);
+  if (!total) return '나의 기록입니다. 아직 푼 문제가 없어요';
+  const t = Object.entries(L.types).sort((a, b) => b[1] - a[1])[0];
+  const weak = Object.keys(L.items).map(k => [k, Learn.mastery(k)]).sort((a, b) => a[1] - b[1])[0];
+  return `나의 기록입니다. 지금 단계는 ${Learn.STAGES[L.stage]}. 푼 문제 ${total}개, 틀린 문제 ${wrong}개.`
+    + (t ? ` 가장 많이 틀린 유형은 ${t[0]}.` : '') + (weak ? ` 가장 약한 문제는 ${readable(weak[0])}.` : '');
 }
 const sayQuestion = () => quiz && say(`문제 ${qnum}번. ${quiz.speak}`);
+// 단계별 문제 목록
+function itemsOfCat(cat) {
+  if (cat === '단어') return WORDS;
+  const { INIT, VOW, FIN } = BRAILLE_MAPS, map = { '모음': VOW, '첫소리': INIT, '받침': FIN };
+  if (cat === '약자') return ABBR_ONE.map(([cell, w]) => ({ kind: 'basic', key: `약자 ${w}`, cell, prompt: `약자 '${w}'`, speak: `약자 ${w}, 를 한 칸으로 써 보세요` }));
+  return Object.entries(map[cat]).map(([cell, j]) => ({ kind: 'basic', key: `${cat} ${j}`, cell, prompt: `${cat} '${j}'`, speak: `${cat} ${JAMO[j] || j}, 를 써 보세요` }));
+}
+// 자동 단계: 지금 단계까지의 체크 칸·모드를 맞춤 (이전 단계는 복습용으로 같이)
+function applyStage() {
+  const st = Learn.L.stage, cats = Learn.STAGES;
+  $('stageBar').innerHTML = cats.map((c, i) => `<span role="button" tabindex="0" data-st="${i}" class="${i < st ? 'done' : i === st ? 'cur' : ''}" aria-label="${i + 1}단계 ${c}${i === st ? ', 지금 단계' : ''}">${i + 1} ${c}</span>`).join('');
+  if (!$('autoStage').checked) return;
+  $('sVow').checked = st >= 0; $('sInit').checked = st >= 1; $('sFin').checked = st >= 2; $('sAbbr').checked = st >= 3;
+  const m = st >= 4 ? 'word' : 'basic';
+  if (m !== quizMode) { quizMode = m;
+    $('mBasic').classList.toggle('off', m !== 'basic'); $('mWord').classList.toggle('off', m !== 'word');
+    $('subs').style.display = m === 'basic' ? 'flex' : 'none'; }
+}
+let qStartT = 0;
 function newQuestion() {
+  applyStage();
   let all = quizMode === 'basic' ? basicItems() : WORDS;
   if (!all.length) { $('sVow').checked = true; all = basicItems(); }   // 아무것도 안 골랐으면 모음
-  // 틀린 문제일수록 다시 나올 확률이 높아요 (가중치 = 1 + 틀린 횟수 × 2)
+  // 숙련도가 낮을수록 자주 나와요 (가중치 = 1 + 6 × (1 − 숙련도)). 자동 단계에서는 지금 단계 문제를 2배로
+  const cur = Learn.STAGES[Learn.L.stage];
   const pool = all.filter(x => !quiz || x.key !== quiz.key);
-  const w = pool.map(x => 1 + 2 * (Diagnose.stats.words[x.key] || 0));
+  const w = pool.map(x => (1 + 6 * (1 - Learn.mastery(x.key))) * ($('autoStage').checked && Learn.catOf(x.key) === cur ? 2 : 1));
   let r = Math.random() * w.reduce((a, b) => a + b, 0), q = pool[0];
   for (let i = 0; i < pool.length; i++) { r -= w[i]; if (r <= 0) { q = pool[i]; break; } }
   quiz = q;
@@ -354,6 +399,7 @@ function newQuestion() {
   $('qstart').textContent = '퀴즈 끄기';
   history = []; showHistory();
   qnum++;
+  qStartT = performance.now();
   sayQuestion();
 }
 function showScore() { $('score').textContent = quiz || score.o + score.x ? `O ${score.o} · X ${score.x}` : ''; }
@@ -384,6 +430,13 @@ function gradeCell(cell) {
 
 function finishGrade(ok, errors, okHtml, xHtml, okSay, xSay, logText) {
   Diagnose.record(quiz.key, ok, errors);
+  const sec = (performance.now() - qStartT) / 1000;
+  const slow = Learn.record(quiz.key, quiz.kind, ok, sec, errors);         // 폰에 저장
+  if (slow) { okHtml += `<br><span class="note">맞았지만 ${sec.toFixed(0)}초 걸렸어요. 조금 더 연습해요</span>`; okSay += '. 맞았지만 조금 오래 걸렸어요'; }
+  const stageCat = Learn.STAGES[Learn.L.stage];
+  const advanced = $('autoStage').checked && Learn.catOf(quiz.key) === stageCat
+    && Learn.checkAdvance(itemsOfCat(stageCat).map(x => x.key));
+  if (advanced) setTimeout(() => { applyStage(); say(`축하해요. ${stageCat} 단계를 통과했어요. 다음은 ${Learn.STAGES[Learn.L.stage]} 단계예요`); }, ok ? 1800 : 5000);
   ok ? score.o++ : score.x++; showScore(); showPattern();
   $('ox').textContent = ok ? 'O' : 'X'; $('ox').className = 'ox ' + (ok ? 'o' : 'x');
   if (ok) { $('qinfo').innerHTML = okHtml; say(okSay); }
@@ -395,21 +448,39 @@ function finishGrade(ok, errors, okHtml, xHtml, okSay, xSay, logText) {
   }
   log(`퀴즈 '${quiz.key}' → ${ok ? 'O' : 'X'} (${logText})${errors.map(e => ' · ' + e.type).join('')}`);
   const thisQ = quiz;
-  setTimeout(() => { if (quiz && quiz === thisQ && screen === 'quiz') newQuestion(); }, ok ? 3000 : 8000);
+  setTimeout(() => { if (quiz && quiz === thisQ && screen === 'quiz') newQuestion(); }, (ok ? 3000 : 8000) + (advanced ? 4000 : 0));
 }
 
 // 자주 틀리는 유형·글자 보여 주기
 function showPattern() {
-  const st = Diagnose.stats;
-  if (!st.total) return;
-  const types = Diagnose.top(st.types, 5), letters = Diagnose.top(st.letters, 3), words = Diagnose.top(st.words, 3);
-  const max = Math.max(1, ...types.map(t => t[1]));
-  $('pattern').innerHTML =
-    `<div>푼 문제 ${st.total}개 · 틀린 문제 ${st.wrong}개</div>` +
-    (types.length ? `<div style="margin-top:8px">${types.map(([k, v]) =>
-      `<div class="bar"><span style="width:120px">${k}</span><span class="b" style="width:${Math.round(v / max * 140)}px"></span><span>${v}</span></div>`).join('')}</div>` : '') +
-    (letters.length ? `<div style="margin-top:8px">자주 틀리는 글자: <b>${letters.map(([k, v]) => `${k}(${v})`).join(', ')}</b></div>` : '') +
-    (words.length ? `<div>다시 자주 낼 문제: <b>${words.map(([k]) => k).join(', ')}</b></div>` : '');
+  const L = Learn.L, days = Object.entries(L.days).sort();
+  const total = days.reduce((s, [, v]) => s + v.n, 0), wrong = days.reduce((s, [, v]) => s + v.w, 0);
+  if (total) {
+    const types = Object.entries(L.types).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    const max = Math.max(1, ...types.map(t => t[1]));
+    $('pattern').innerHTML = `<div>지금까지 푼 문제 <b>${total}</b>개 · 틀린 문제 <b>${wrong}</b>개 (오류율 ${(wrong / total * 100).toFixed(0)}%)</div>` +
+      (types.length ? `<div style="margin-top:8px">${types.map(([k, v]) =>
+        `<div class="bar"><span style="width:120px">${k}</span><span class="b" style="width:${Math.round(v / max * 140)}px"></span><span>${v}</span></div>`).join('')}</div>` : '');
+  }
+  // 단계와 숙련도: 지금 단계 진행률 + 가장 약한 문제
+  const st = L.stage, cat = Learn.STAGES[st], keys = itemsOfCat(cat).map(x => x.key);
+  const seen = Object.keys(L.items);
+  const weak = seen.map(k => [k, Learn.mastery(k)]).sort((a, b) => a[1] - b[1]).slice(0, 8);
+  const col = v => v >= 0.75 ? '#3ddc97' : v >= 0.5 ? '#ffd23f' : '#ff6b6b';
+  $('mastery').innerHTML = `<div>지금 단계: <b>${st + 1}. ${cat}</b> · 평균 숙련도 <b>${(Learn.mean(keys) * 100).toFixed(0)}%</b>
+      (통과 기준 ${Learn.PASS * 100}%, 푼 문제 ${keys.filter(k => L.items[k]).length}/${keys.length})</div>` +
+    (weak.length ? `<div style="margin-top:8px">숙련도가 낮은 문제</div>` + weak.map(([k, v]) =>
+      `<div class="mrow"><span class="k">${k}</span><span class="bg"><span class="fg" style="display:block;width:${v * 100}%;background:${col(v)}"></span></span><span class="v">${(v * 100).toFixed(0)}%</span></div>`).join('') : '');
+  // 날짜별 기록 + 오류율 그래프
+  if (days.length) {
+    const W = 300, H = 90, pts = days.map(([, v], i) => [days.length === 1 ? W / 2 : 20 + i * (W - 40) / (days.length - 1), H - 15 - (v.w / v.n) * (H - 30)]);
+    const svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" aria-hidden="true" style="margin-top:6px">
+      <line x1="20" y1="${H - 15}" x2="${W - 20}" y2="${H - 15}" stroke="#2d3540"/><text x="2" y="${H - 12}" font-size="9" fill="#9aa4b2">0%</text><text x="2" y="18" font-size="9" fill="#9aa4b2">100%</text>
+      <polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="#ffd23f" stroke-width="2"/>
+      ${pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="#ffd23f"/>`).join('')}</svg>`;
+    $('daily').innerHTML = `<div>날짜별 오류율</div>${svg}<table class="days"><tr><th>날짜</th><th>푼 문제</th><th>오류율</th><th>평균 시간</th><th>망설임</th></tr>` +
+      days.slice(-7).map(([d, v]) => `<tr><td>${d.slice(5)}</td><td>${v.n}</td><td>${(v.w / v.n * 100).toFixed(0)}%</td><td>${(v.t / v.n).toFixed(1)}초</td><td>${v.slow || 0}</td></tr>`).join('') + '</table>';
+  }
 }
 
 // 소리로 읽을 때: 낱자(ㄱ, ㅏ)는 이름으로 바꿔 읽기
@@ -647,15 +718,34 @@ $('goQuiz').addEventListener('click', () => go('quiz'));
 $('goFree').addEventListener('click', () => go('free'));
 $('goStats').addEventListener('click', () => go('stats'));
 $('qagain').addEventListener('click', sayQuestion);
-$('mBasic').addEventListener('click', () => setMode('basic'));
-$('mWord').addEventListener('click', () => setMode('word'));
-['sVow', 'sInit', 'sFin', 'sAbbr'].forEach(id => $(id).addEventListener('change', () => { if (quiz && quizMode === 'basic') newQuestion(); }));
+$('autoStage').checked = Learn.L.auto !== false;
+$('stageBar').addEventListener('click', e => {                 // 단계 눌러서 바로 이동 (시연용)
+  const t = e.target.closest('[data-st]'); if (!t) return;
+  Learn.L.stage = +t.dataset.st; Learn.L.auto = true; $('autoStage').checked = true; Learn.save();
+  applyStage(); say(`${Learn.STAGES[Learn.L.stage]} 단계로 바꿨어요`);
+  if (screen === 'quiz') setTimeout(newQuestion, 1200);
+});
+$('autoStage').addEventListener('change', () => { Learn.L.auto = $('autoStage').checked; Learn.save(); applyStage(); if (screen === 'quiz' && quiz) newQuestion(); });
+$('csvBtn').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([Learn.csv()], { type: 'text/csv' }));
+  a.download = `점자학습기록_${Learn.today()}.csv`; a.click();
+});
+$('resetBtn').addEventListener('click', () => {
+  if (confirm('학습 기록을 모두 지울까요?')) { Learn.reset(); showPattern(); $('pattern').innerHTML = '기록을 지웠어요'; applyStage(); say('기록을 지웠어요'); }
+});
+$('mBasic').addEventListener('click', () => { $('autoStage').checked = false; Learn.L.auto = false; Learn.save(); setMode('basic'); });
+$('mWord').addEventListener('click', () => { $('autoStage').checked = false; Learn.L.auto = false; Learn.save(); setMode('word'); });
+['sVow', 'sInit', 'sFin', 'sAbbr'].forEach(id => $(id).addEventListener('change', () => {
+  $('autoStage').checked = false; Learn.L.auto = false; Learn.save();               // 직접 고르면 자동 단계 끄기
+  if (quiz && quizMode === 'basic') newQuestion(); }));
 try { $('srMode').checked = localStorage.getItem('srMode') === '1'; } catch (e) {}
 $('srMode').addEventListener('change', () => {
   try { localStorage.setItem('srMode', $('srMode').checked ? '1' : '0'); } catch (e) {}
   if ($('srMode').checked && 'speechSynthesis' in window) speechSynthesis.cancel();
   say($('srMode').checked ? '스크린 리더 모드를 켰어요. 이제 TalkBack이 안내를 읽어 줘요' : '스크린 리더 모드를 껐어요');
 });
+applyStage(); showPattern();
 go('home');
 $('test').addEventListener('click', () => say('음성 피드백 테스트입니다'));
 </script>
