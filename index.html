@@ -68,6 +68,10 @@
   .scr { display: none; }
   details.more summary { cursor: pointer; font-size: 17px; color: var(--muted); padding: 4px 0; }
   details.more[open] summary { margin-bottom: 10px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .srbox { display: flex; gap: 10px; align-items: center; background: var(--card); border: 2px solid var(--line); border-radius: 14px;
+           padding: 12px 14px; margin-bottom: 14px; font-size: 17px; }
+  .srbox input { width: 26px; height: 26px; flex: none; }
   .modes { display: flex; gap: 10px; margin: 4px 0 10px; }
   .modes .btn { min-height: 52px; font-size: 18px; }
   .subs { display: flex; gap: 16px; justify-content: center; margin-bottom: 8px; font-size: 17px; }
@@ -99,7 +103,11 @@
   <h1>점자 쓰기 학습기</h1>
   <p class="sub">STM32 → ESP32 → 블루투스 → 이 화면</p>
 
-  <button id="connect" class="btn" aria-live="polite">연결하기</button>
+  <div id="srLive" class="sr-only" role="status" aria-live="assertive" aria-atomic="true"></div>
+  <label class="srbox"><input type="checkbox" id="srMode">
+    <span><b>스크린 리더(TalkBack) 모드</b><br><span class="note">TalkBack을 쓰고 있으면 켜 주세요. 이 페이지 목소리 대신 TalkBack이 읽어 줘요.</span></span></label>
+
+  <button id="connect" class="btn">연결하기</button>
   <div class="status" role="status" aria-live="polite">
     <span id="sdot" class="dot-s"></span><span id="stext">연결 안 됨</span>
   </div>
@@ -114,7 +122,7 @@
 
   <!-- ===== 처음 화면: 모드 고르기 ===== -->
   <section id="scrHome" aria-label="모드 고르기">
-    <h2 class="menuTitle">모드를 고르세요</h2>
+    <h2 class="menuTitle" id="menuTitle">모드를 고르세요</h2>
     <button class="btn menu" id="goQuiz"><span class="num">1</span>퀴즈<small>기초 · 단어 문제 풀기</small></button>
     <button class="btn menu" id="goFree"><span class="num">2</span>자유 쓰기<small>쓰면 어떻게 읽히는지 들려줘요</small></button>
     <button class="btn menu" id="goStats"><span class="num">3</span>나의 기록<small>자주 틀리는 패턴</small></button>
@@ -160,7 +168,7 @@
   <div id="work" class="scr">
     <section class="card" aria-label="점자 칸">
       <h2>점자 칸</h2>
-      <div class="cell" id="cell">
+      <div class="cell" id="cell" aria-hidden="true">
         <div class="bd" id="d1">1</div><div class="bd" id="d2">2</div><div class="bd" id="d3">3</div>
         <div class="bd" id="d4">4</div><div class="bd" id="d5">5</div><div class="bd" id="d6">6</div>
       </div>
@@ -181,7 +189,7 @@
   <!-- ===== 자세히 (개발·설정용) ===== -->
   <details class="card more">
     <summary>설정 · 자세히</summary>
-    <label class="row"><input type="checkbox" id="speak" checked> 음성으로 읽어 주기</label>
+    <label class="row"><input type="checkbox" id="speak" checked> 음성으로 읽어 주기 (스크린 리더 모드에서는 TalkBack이 읽음)</label>
     <label class="row"><input type="checkbox" id="hidePins" checked> 기록에서 PINS·ping 숨기기</label>
     <button id="test" class="btn off" style="min-height:52px;font-size:18px;margin:10px 0">음성 테스트</button>
     <h2>칸 해석 결과</h2>
@@ -426,7 +434,14 @@ function setStatus(on, text) {
   $('connect').classList.toggle('off', on);
 }
 
+let srSeq = 0;
 function say(text) {
+  if ($('srMode').checked) {                     // TalkBack이 읽도록 알림 영역에 글자로 넣기
+    const el = $('srLive'), n = ++srSeq;
+    el.textContent = '';
+    setTimeout(() => { if (n === srSeq) el.textContent = text; }, 60);   // 같은 문장도 다시 읽게 비웠다 넣기
+    return;
+  }
   if (!$('speak').checked || !('speechSynthesis' in window)) return;
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'ko-KR'; u.rate = 1.1;
@@ -635,6 +650,12 @@ $('qagain').addEventListener('click', sayQuestion);
 $('mBasic').addEventListener('click', () => setMode('basic'));
 $('mWord').addEventListener('click', () => setMode('word'));
 ['sVow', 'sInit', 'sFin', 'sAbbr'].forEach(id => $(id).addEventListener('change', () => { if (quiz && quizMode === 'basic') newQuestion(); }));
+try { $('srMode').checked = localStorage.getItem('srMode') === '1'; } catch (e) {}
+$('srMode').addEventListener('change', () => {
+  try { localStorage.setItem('srMode', $('srMode').checked ? '1' : '0'); } catch (e) {}
+  if ($('srMode').checked && 'speechSynthesis' in window) speechSynthesis.cancel();
+  say($('srMode').checked ? '스크린 리더 모드를 켰어요. 이제 TalkBack이 안내를 읽어 줘요' : '스크린 리더 모드를 껐어요');
+});
 go('home');
 $('test').addEventListener('click', () => say('음성 피드백 테스트입니다'));
 </script>
