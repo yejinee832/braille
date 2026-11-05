@@ -418,7 +418,7 @@ function gradeWord(word, cells) {
   finishGrade(ok, d.errors,
     `정답! 입력: ${cells.join(' / ')}`,
     `입력한 것: <b>${word || '(없음)'}</b> (${cells.join(' / ') || '-'})<br>정답 점자: <b>${d.answer.join(' / ')}</b>`,
-    `정답입니다. ${quiz.key}`,
+    `맞았어요! ${quiz.key}${eulReul(quiz.key)} 잘 썼어요`,
     `틀렸어요. 정답은 ${quiz.key} 입니다.`,
     `입력 ${word}, ${cells.join('/')}`);
 }
@@ -432,7 +432,7 @@ function gradeCell(cell) {
   finishGrade(ok, errors,
     `정답! ${quiz.prompt} = ${dots(cell)}번 점`,
     `입력한 점: <b>${dots(cell)}</b><br>정답 점자: <b>${dots(quiz.cell)}</b>`,
-    `정답입니다. ${readable(quiz.key)}`,
+    `맞았어요! ${readable(quiz.key)}${eulReul(readable(quiz.key))} 잘 썼어요`,
     `틀렸어요. ${readable(quiz.key)}는 ${dots(quiz.cell)}번 점이에요.`,
     `입력 ${cell}`);
 }
@@ -441,7 +441,7 @@ function finishGrade(ok, errors, okHtml, xHtml, okSay, xSay, logText) {
   Diagnose.record(quiz.key, ok, errors);
   const sec = (performance.now() - qStartT) / 1000;
   const slow = Learn.record(quiz.key, quiz.kind, ok, sec, errors);         // 폰에 저장
-  if (slow) { okHtml += `<br><span class="note">맞았지만 ${sec.toFixed(0)}초 걸렸어요. 조금 더 연습해요</span>`; okSay += '. 맞았지만 조금 오래 걸렸어요'; }
+  if (slow) { okHtml += `<br><span class="note">맞았지만 ${sec.toFixed(0)}초 걸렸어요. 조금 더 연습해요</span>`; okSay = '맞았어요. 그런데 조금 오래 걸렸어요. 한 번 더 연습해 봐요'; }
   const stageCat = Learn.STAGES[Learn.L.stage];
   const advanced = $('autoStage').checked && Learn.catOf(quiz.key) === stageCat
     && Learn.checkAdvance(itemsOfCat(stageCat).map(x => x.key));
@@ -517,6 +517,9 @@ function showReport() {
 }
 
 // 소리로 읽을 때: 낱자(ㄱ, ㅏ)는 이름으로 바꿔 읽기
+// 받침 유무에 따라 을/를 고르기
+const eulReul = w => { const c = w.trim().slice(-1).charCodeAt(0);
+  return c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 ? '을' : '를'; };
 const readable = w => [...w].map(ch => JAMO[ch] ? ` ${JAMO[ch]} ` : ch).join('').trim();
 
 function showHistory() {
