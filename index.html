@@ -365,8 +365,8 @@ function cellPic(c) {
 }
 function seqHtml(cells, isWord) {
   const parts = [];
-  cells.forEach((c, i) => { parts.push(cellPic(c)); parts.push('<span class="k">다음</span>'); });
-  if (isWord) parts.push('<span class="k done">완료</span>');
+  cells.forEach((c, i) => { parts.push(cellPic(c)); parts.push('<span class="k">다음 버튼</span>'); });
+  if (isWord) parts.push('<span class="k done">완료 버튼 (오른쪽)</span>');
   return `<div class="seq" aria-label="${cells.map(c => c.split('').join('·') + '번 점').join(', 다음, ')}${isWord ? ', 그리고 완료' : ''}">${parts.join('<span>→</span>')}</div>`;
 }
 function showAnswer() {
