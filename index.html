@@ -796,7 +796,7 @@ function handleLine(line) {
     return;
   }
   if (line === 'DONE' || line === 'NEXT') {      // 완료 → 칸들을 조합해서 낱말 완성
-    if (!history.length && screen !== 'home' && !(quiz && quiz.kind === 'basic')) { go('home'); return; }  // 쓴 게 없으면 처음 화면
+    if (!history.length && screen !== 'home') { go('home'); return; }  // 쓴 게 없으면 처음 화면 (기초 퀴즈 중에도)
     const cells = history.map(h => h.cell);
     const word = composeBraille(cells);
     history = []; showHistory();
