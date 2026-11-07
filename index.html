@@ -92,6 +92,13 @@
   .hints { margin: 8px 0 0; padding-left: 20px; font-size: 16px; text-align: left; }
   .hints li { margin: 4px 0; }
   .hints .t { color: var(--accent); font-weight: 700; }
+  .echeck { display: none; margin-top: 12px; border: 2px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+  .echeck .h { font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+  .echeck ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 14px; }
+  .echeck li { color: var(--muted); }
+  .echeck li::before { content: '○ '; }
+  .echeck li.on { color: var(--text); font-weight: 700; }
+  .echeck li.on::before { content: '● '; color: var(--accent); }
   .bar { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 15px; }
   .bar .b { height: 12px; background: var(--accent); border-radius: 6px; }
   .hist { display: flex; flex-wrap: wrap; gap: 10px; min-height: 64px; align-items: center; }
@@ -174,6 +181,7 @@
     <div class="q" id="qword">퀴즈 시작을 눌러 주세요</div>
     <div class="ox" id="ox" aria-live="assertive"></div>
     <div class="info" id="qinfo">점을 누르고 <b>다음</b>(칸 확정), 다 썼으면 <b>완료</b>를 누르세요</div>
+    <div class="echeck" id="echeck" aria-hidden="true"><div class="h">시연한 오류 유형 <span id="ecount">0</span>/9</div><ul id="elist"></ul></div>
     <div class="btns">
       <button id="qstart" class="btn">퀴즈 시작</button>
       <button id="qagain" class="btn off">다시 듣기</button>
@@ -510,7 +518,7 @@ function gradeWord(word, cells) {
   const ok = word === quiz.key;
   const d = ok ? { errors: [], answer: quiz.answers[0].split('/') } : Diagnose.diagnose(cells, quiz.answers);
   finishGrade(ok, d.errors,
-    `정답! 입력: ${cells.join(' / ')}`,
+    `정답! 입력: ${cells.map(c => c.split('').join('·')).join(' → ')}`,
     `입력한 것: <b>${word || '(없음)'}</b> (${cells.map(c => c.split('').join('·')).join(' → ') || '-'})<br>정답 점자:${seqHtml(d.answer, true)}`,
     `맞았어요! ${quiz.key}${eulReul(quiz.key)} 잘 썼어요`,
     `틀렸어요. 정답은 ${quiz.key} 입니다.`,
@@ -538,8 +546,16 @@ function gradeCell(cell) {
     `입력 ${cell}`);
 }
 
+// 시연 모드: 표 4의 오류 유형 중 지금까지 보여 준 것 표시
+const ETYPES = ['좌우 반전', '위아래 반전', '초성·받침 혼동', '점 빠짐', '점 추가', '점 위치 틀림', '칸 빠짐', '칸 추가', '다른 글자'];
+const eSeen = new Set();
+function showECheck() {
+  $('elist').innerHTML = ETYPES.map(t => `<li class="${eSeen.has(t) ? 'on' : ''}">${t}</li>`).join('');
+  $('ecount').textContent = eSeen.size;
+}
 function finishGrade(ok, errors, okHtml, xHtml, okSay, xSay, logText) {
   Diagnose.record(quiz.key, ok, errors);
+  if (DEMO) { errors.forEach(e => eSeen.add(e.type)); showECheck(); }
   answeredQ = quiz;
   if (DEMO) demoRetry = !ok;
   const sec = (performance.now() - qStartT) / 1000;
@@ -911,6 +927,8 @@ if (DEMO) {
   for (const id of ['stageBox', 'subs']) $(id).style.display = 'none';
   document.querySelector('.modes').style.display = 'none';
   $('qskip').textContent = '다음 문제';
+  Learn.reset();                                    // 시연은 항상 빈 기록에서 시작
+  $('echeck').style.display = 'block'; showECheck();
 }
 try { $('srMode').checked = localStorage.getItem('srMode') === '1'; } catch (e) {}
 $('srMode').addEventListener('change', () => {

@@ -60,7 +60,7 @@
       return { type: '점 추가', msg: `${extra.join('·')}번 점을 더 눌렀어요. 정답은 ${dots(a)}번 점이에요.` };
     if (miss.length + extra.length <= 2)
       return { type: '점 위치 틀림', msg: `${extra.join('·')}번 대신 ${miss.join('·')}번 점이에요. 정답은 ${dots(a)}번 점이에요.` };
-    return { type: '다른 글자', msg: `${meaning(u)}(${dots(u)}) 대신 ${meaning(a)}(${dots(a)})를 써야 해요.` };
+    return { type: '다른 글자', msg: `${meaning(u)}(${dots(u)}) 대신 ${meaning(a)}(${dots(a)})${ieyo(meaning(a)) === '예요' ? '를' : '을'} 써야 해요.` };
   }
 
   // 칸 순서 맞추기(편집 거리)로 빠진 칸·더 쓴 칸까지 찾기
