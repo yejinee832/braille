@@ -420,9 +420,9 @@ function applyStage() {
 let qStartT = 0;
 // ===== 사용법 안내 (화면 버튼, 또는 기기에서 점 없이 '다음'을 두 번) =====
 var lastEmpty = -1e9;
-// ===== 문제를 읽은 뒤 12초 동안 아무것도 누르지 않으면 정답 듣는 방법 안내 (문제마다 한 번) =====
+// ===== 문제를 읽은 뒤 10초 동안 아무것도 누르지 않으면 정답 듣는 방법 안내 (문제마다 한 번) =====
 var idleTimer = null, lastActivity = 0, answeredQ = null;
-const IDLE_MS = 12000;
+const IDLE_MS = 10000;
 function armIdleHint() {
   clearTimeout(idleTimer);
   const q = quiz; answeredQ = null;
