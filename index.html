@@ -871,6 +871,19 @@ function onData(e) {
   if (buf) flushTimer = setTimeout(() => { const b = buf; buf = ''; handleLine(b); }, 200);
 }
 
+// 화면 꺼짐 방지: 기기 버튼만 누르고 화면을 안 만져도 폰 화면이 켜져 있게 (Wake Lock)
+let wakeLock = null;
+async function keepAwake() {
+  try {
+    if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+    if (wakeLock && !wakeLock.released) return;
+    wakeLock = await navigator.wakeLock.request('screen');
+  } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+document.addEventListener('click', keepAwake);
+keepAwake();
+
 // 기기 연결 (처음 한 번만 목록에서 고르고, 그 뒤로는 목록 없이 다시 연결)
 let reconnecting = false, manualOff = false;
 async function openDevice(dev, quiet) {
@@ -888,6 +901,7 @@ async function openDevice(dev, quiet) {
   await tx.startNotifications();
   setStatus(true, `연결됨: ${dev.name || 'BrailleTrainer'}`);
   $('tapConn').classList.add('hide');
+  keepAwake();
   say(quiet ? '다시 연결됐어요'
     : '연결됐어요. 이제 기기의 버튼으로 사용할 수 있어요. 1번 점과 다음 버튼을 누르면 퀴즈를 시작해요. 사용법을 들으려면 점을 누르지 않고 다음 버튼을 두 번 누르세요');
 }
