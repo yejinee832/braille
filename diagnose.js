@@ -17,8 +17,33 @@
   }
   const jamoOf = c => { const { INIT, VOW, FIN } = M(); return INIT[c] || VOW[c] || FIN[c] || ''; };
 
+  // '이에요/예요' 고르기: 자음 이름(기역, 티읕…)은 모두 받침으로 끝나고, 모음(아, 어…)은 받침 없음
+  function ieyo(x) {
+    const c = x.trim().slice(-1).charCodeAt(0);
+    if (c >= 0x3131 && c <= 0x314E) return '이에요';
+    if (c >= 0x314F && c <= 0x3163) return '예요';
+    if (c >= 0xAC00 && c <= 0xD7A3) return (c - 0xAC00) % 28 ? '이에요' : '예요';
+    return '이에요';
+  }
+  // 입력한 칸이 실제로 무슨 글자로 읽히는지 (readAs: 문제 종류에 맞는 읽기 함수)
+  function writtenAs(u, readAs) {
+    const r = readAs ? readAs(u) : '';
+    if (r) return r;
+    const m = meaning(u);
+    return m !== '없는 점자' && !m.includes(' / ') ? m : '';
+  }
+
   // 한 칸 비교: 정답 a, 입력 u
-  function compareCell(u, a) {
+  function compareCell(u, a, readAs) {
+    const r = compareCellCore(u, a);
+    if (r.type !== '초성·받침 혼동' && r.type !== '다른 글자' && u) {
+      const w = writtenAs(u, readAs);
+      if (w) { r.wrote = w; r.msg += ` 지금 쓴 점자는 ${w}${ieyo(w)}.`; }
+      else if (u) r.msg += ' 지금 쓴 점자는 없는 글자예요.';
+    }
+    return r;
+  }
+  function compareCellCore(u, a) {
     const { INIT, FIN } = M(); const U = set(u), A = set(a);
     const miss = [...A].filter(d => !U.has(d)), extra = [...U].filter(d => !A.has(d));
     if (FIN[u] && INIT[a] && FIN[u] === INIT[a])

@@ -234,7 +234,7 @@
 </main>
 
 <script src="compose.js"></script>
-<script src="diagnose.js"></script>
+<script src="diagnose.js?v=2"></script>
 <script src="learn.js?v=2"></script>
 <script>
 const SVC = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
@@ -424,16 +424,23 @@ function gradeWord(word, cells) {
 }
 
 // 기초 모드: 한 칸 채점 (다음 버튼을 누르면 바로)
+// 문제 종류(모음/첫소리/받침/약자)에 맞게 '입력한 칸이 무슨 글자로 읽히는지' 찾기
+function readAsFor(key) {
+  const { INIT, VOW, FIN } = BRAILLE_MAPS, cat = Learn.catOf(key);
+  const map = cat === '모음' ? VOW : cat === '첫소리' ? INIT : cat === '받침' ? FIN
+    : cat === '약자' ? Object.fromEntries(ABBR_ONE) : null;
+  return c => (map && map[c]) || '';
+}
 function gradeCell(cell) {
   const ok = cell === quiz.cell;
-  const errors = ok ? [] : [{ where: '', cell: quiz.cell, ...Diagnose.compareCell(cell, quiz.cell) }];
+  const errors = ok ? [] : [{ where: '', cell: quiz.cell, ...Diagnose.compareCell(cell, quiz.cell, readAsFor(quiz.key)) }];
   const dots = c => c.split('').join(', ');
   history = []; showHistory();
   finishGrade(ok, errors,
     `정답! ${quiz.prompt} = ${dots(cell)}번 점`,
     `입력한 점: <b>${dots(cell)}</b><br>정답 점자: <b>${dots(quiz.cell)}</b>`,
     `맞았어요! ${readable(quiz.key)}${eulReul(readable(quiz.key))} 잘 썼어요`,
-    `틀렸어요. ${readable(quiz.key)}는 ${dots(quiz.cell)}번 점이에요.`,
+    `틀렸어요. ${readable(quiz.key)}${eunNeun(readable(quiz.key))} ${dots(quiz.cell)}번 점이에요.`,
     `입력 ${cell}`);
 }
 
@@ -520,6 +527,8 @@ function showReport() {
 // 받침 유무에 따라 을/를 고르기
 const eulReul = w => { const c = w.trim().slice(-1).charCodeAt(0);
   return c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 ? '을' : '를'; };
+const eunNeun = w => { const c = w.trim().slice(-1).charCodeAt(0);
+  return c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 ? '은' : '는'; };
 const readable = w => [...w].map(ch => JAMO[ch] ? ` ${JAMO[ch]} ` : ch).join('').trim();
 
 function showHistory() {
