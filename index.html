@@ -147,9 +147,11 @@
     <button class="btn menu" id="goQuiz"><span class="num">1</span>퀴즈<small>기초 · 단어 문제 풀기</small></button>
     <button class="btn menu" id="goFree"><span class="num">2</span>자유 쓰기<small>쓰면 어떻게 읽히는지 들려줘요</small></button>
     <button class="btn menu" id="goStats"><span class="num">3</span>나의 기록<small>자주 틀리는 패턴</small></button>
+    <button class="btn menu off helpBtn" id="helpHome"><span class="num">?</span>사용법 듣기<small>점자 키와 아래 버튼 3개 설명</small></button>
     <p class="note center">점자기로도 고를 수 있어요: <b>1번 점 + 다음</b> = 퀴즈, <b>2번 점 + 다음</b> = 자유 쓰기, <b>3번 점 + 다음</b> = 나의 기록.<br>
     쓴 칸이 없을 때 <b>지우기</b> = 이전 화면, <b>완료</b> = 처음 화면.<br>
-    퀴즈에서 <b>지우기를 두 번</b> 누르면 정답을 읽어 줘요.<br>퀴즈는 다른 모드에 다녀와도 이어서 풀 수 있어요.</p>
+    퀴즈에서 <b>지우기를 두 번</b> 누르면 정답을 읽어 줘요.<br>퀴즈는 다른 모드에 다녀와도 이어서 풀 수 있어요.<br>
+    점을 누르지 않고 <b>다음을 두 번</b> 누르면 사용법을 읽어 줘요.</p>
   </section>
 
   <!-- ===== 1. 퀴즈 ===== -->
@@ -177,6 +179,7 @@
       <button id="qagain" class="btn off">다시 듣기</button>
       <button id="qans" class="btn off">정답 보기</button>
       <button id="qskip" class="btn off">다른 문제</button>
+      <button id="qhelp" class="btn off helpBtn" style="grid-column:1/-1">사용법 듣기 (버튼 설명)</button>
     </div>
   </section>
 
@@ -414,6 +417,19 @@ function applyStage() {
     $('subs').style.display = m === 'basic' ? 'flex' : 'none'; }
 }
 let qStartT = 0;
+// ===== 사용법 안내 (화면 버튼, 또는 기기에서 점 없이 '다음'을 두 번) =====
+var lastEmpty = -1e9;
+const HELP_TEXT = [
+  '사용법을 알려 드릴게요.',
+  '위쪽에 점자 키 6개가 있어요. 왼쪽 줄이 위에서부터 1번, 2번, 3번 점이고, 오른쪽 줄이 4번, 5번, 6번 점이에요.',
+  '아래쪽에는 버튼이 3개 있어요. 왼쪽부터 다음, 지우기, 완료 버튼이에요.',
+  '왼쪽 다음 버튼은 누른 점들을 한 칸으로 정해요. 한 칸짜리 문제는 다음 버튼을 누르면 바로 채점해요.',
+  '가운데 지우기 버튼은 쓰던 칸을 지워요. 쓴 칸이 없을 때 누르면 이전 화면으로 가요. 퀴즈에서 두 번 누르면 정답을 들을 수 있어요.',
+  '오른쪽 완료 버튼은 단어를 다 쓴 뒤 마지막에 눌러요. 쓴 칸이 없을 때 누르면 처음 화면으로 가요.',
+  '이 설명을 다시 들으려면, 점을 누르지 않고 다음 버튼을 두 번 누르세요.'
+].join(' ');
+function sayHelp() { say(HELP_TEXT); log('사용법 안내'); }
+
 const qText = q => (DEMO ? `문제 ${qnum + (q === quiz ? 0 : 1)}번 · ` : '') + (q.kind === 'basic' ? `${q.prompt}${josaEul(q.prompt.replace(/'/g, ''))} 써 보세요` : q.prompt);
 
 // ===== 시연 모드: 아래 목록 순서대로 출제 (바꾸고 싶으면 여기만 고치면 됨) =====
@@ -776,9 +792,11 @@ function handleLine(line) {
     }
     return;
   }
-  if (line === 'EMPTY') {
+  if (line === 'EMPTY') {                         // 점 없이 '다음'을 누름 → 3초 안에 한 번 더 누르면 사용법 안내
     $('res').textContent = '—'; $('cands').innerHTML = ''; $('ressub').textContent = '입력된 점이 없어요';
-    say('입력된 점이 없어요');
+    const now = performance.now();
+    if (now - lastEmpty < 3000) { lastEmpty = -1e9; sayHelp(); }
+    else { lastEmpty = now; say('입력된 점이 없어요. 사용법을 들으려면 다음 버튼을 한 번 더 누르세요'); }
     return;
   }
   log(line);   // 그 밖의 메시지
@@ -840,6 +858,8 @@ $('goQuiz').addEventListener('click', () => go('quiz'));
 $('goFree').addEventListener('click', () => go('free'));
 $('goStats').addEventListener('click', () => go('stats'));
 $('qagain').addEventListener('click', sayQuestion);
+$('helpHome').addEventListener('click', sayHelp);
+$('qhelp').addEventListener('click', sayHelp);
 $('autoStage').checked = Learn.L.auto !== false;
 $('stageBar').addEventListener('click', e => {                 // 단계 눌러서 바로 이동 (시연용)
   const t = e.target.closest('[data-st]'); if (!t) return;
