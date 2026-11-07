@@ -108,6 +108,15 @@
   #log { font-family: ui-monospace, Consolas, monospace; font-size: 14px; max-height: 260px; overflow-y: auto;
          white-space: pre-wrap; color: #cfd6df; margin: 0; }
   .note { color: var(--muted); font-size: 14px; }
+  /* 정답 칸 그림: 점자 한 칸(3×2)과 '다음' 순서 */
+  .seq { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin: 6px 0; }
+  .bc { display: inline-grid; grid-template-columns: 14px 14px; grid-auto-flow: column; grid-template-rows: 14px 14px 14px;
+        gap: 4px; padding: 6px 7px; border: 2px solid #e9ecef; border-radius: 8px; vertical-align: middle; }
+  .bc i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #6c757d; box-sizing: border-box; }
+  .bc i.on { background: #ffd23f; border-color: #ffd23f; }
+  .bcw { display: inline-flex; flex-direction: column; align-items: center; font-size: 13px; }
+  .seq .k { font-size: 13px; padding: 3px 8px; border-radius: 6px; background: #2b313a; }
+  .seq .k.done { background: #1f6f4a; }
 </style>
 </head>
 <body>
@@ -349,18 +358,29 @@ function go(name, isBack) {
 // ---- 정답 보기: 모를 때 정답을 읽어 주기 (틀린 것으로 세서 다시 자주 냄) ----
 let lastEmptyBack = -1e9;
 const ORD = ['첫째', '둘째', '셋째', '넷째', '다섯째', '여섯째', '일곱째', '여덟째', '아홉째', '열째'];
+// 칸 목록을 '점자 그림 → 다음 → 점자 그림 → 다음 → 완료' 순서로 보여 주기
+function cellPic(c) {
+  const on = new Set(String(c).split(''));
+  return `<span class="bcw"><span class="bc" aria-hidden="true">${[1,2,3,4,5,6].map(d => `<i class="${on.has(String(d)) ? 'on' : ''}"></i>`).join('')}</span>${String(c).split('').join('·')}번</span>`;
+}
+function seqHtml(cells, isWord) {
+  const parts = [];
+  cells.forEach((c, i) => { parts.push(cellPic(c)); parts.push('<span class="k">다음</span>'); });
+  if (isWord) parts.push('<span class="k done">완료</span>');
+  return `<div class="seq" aria-label="${cells.map(c => c.split('').join('·') + '번 점').join(', 다음, ')}${isWord ? ', 그리고 완료' : ''}">${parts.join('<span>→</span>')}</div>`;
+}
 function showAnswer() {
   if (!quiz) return;
   const cells = quiz.kind === 'basic' ? [quiz.cell] : quiz.answers[0].split('/');
   const spoken = cells.length === 1
     ? `${cells[0].split('').join(', ')}번 점`
-    : cells.map((c, i) => `${ORD[i] || (i + 1) + '번째'} 칸, ${c.split('').join(', ')}번`).join('. ');
+    : cells.map((c, i) => `${ORD[i] || (i + 1) + '번째'} 칸, ${c.split('').join(', ')}번 누르고 다음`).join('. ') + '. 마지막에 완료';
   Diagnose.stats.words[quiz.key] = (Diagnose.stats.words[quiz.key] || 0) + 1;      // 다시 자주 나오게
   Diagnose.stats.types['정답 보기'] = (Diagnose.stats.types['정답 보기'] || 0) + 1;
   showPattern();
   history = []; showHistory();
   $('ox').textContent = '?'; $('ox').className = 'ox';
-  $('qinfo').innerHTML = `정답: <b>${cells.join(' / ')}</b><br>들은 대로 다시 써 보세요`;
+  $('qinfo').innerHTML = `정답: 왼쪽부터 차례로 누르세요${seqHtml(cells, quiz.kind !== 'basic')}들은 대로 다시 써 보세요`;
   log(`정답 보기 '${quiz.key}' → ${cells.join('/')}`);
   say(`${readable(quiz.key)}, 정답은 ${spoken}. 들은 대로 다시 써 보세요`);
 }
@@ -453,7 +473,7 @@ function gradeWord(word, cells) {
   const d = ok ? { errors: [], answer: quiz.answers[0].split('/') } : Diagnose.diagnose(cells, quiz.answers);
   finishGrade(ok, d.errors,
     `정답! 입력: ${cells.join(' / ')}`,
-    `입력한 것: <b>${word || '(없음)'}</b> (${cells.join(' / ') || '-'})<br>정답 점자: <b>${d.answer.join(' / ')}</b>`,
+    `입력한 것: <b>${word || '(없음)'}</b> (${cells.map(c => c.split('').join('·')).join(' → ') || '-'})<br>정답 점자:${seqHtml(d.answer, true)}`,
     `맞았어요! ${quiz.key}${eulReul(quiz.key)} 잘 썼어요`,
     `틀렸어요. 정답은 ${quiz.key} 입니다.`,
     `입력 ${word}, ${cells.join('/')}`);
