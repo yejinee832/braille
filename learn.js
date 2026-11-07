@@ -7,7 +7,7 @@
 // - 단계 통과: 단계 전체 숙련도가 75%를 넘을 확률 P(p > 0.75) 가 80% 이상
 // - 단계: 모음 → 첫소리 → 받침 → 약자 → 단어 (복지관 인터뷰에서 들은 학습 순서)
 (function (g) {
-  const KEY = 'brailleLearn_v1';
+  const KEY = g.BRAILLE_LEARN_KEY || 'brailleLearn_v1';   // 시연 모드는 따로 저장
   const STAGES = ['모음', '첫소리', '받침', '약자', '단어'];
   const SLOW = { basic: 6, word: 20 };              // 이 시간(초)보다 오래 걸리면 '망설임'
   const PASS = 0.75;                                 // 단계 통과 기준 실력

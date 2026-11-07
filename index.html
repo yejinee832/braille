@@ -112,7 +112,7 @@
 </head>
 <body>
 <main>
-  <h1>점자 쓰기 학습기</h1>
+  <h1>점자 쓰기 학습기 <span id="demoTag" style="display:none;font-size:15px;background:#ffd23f;color:#111;border-radius:8px;padding:2px 8px;vertical-align:middle">시연 모드</span></h1>
   <p class="sub">STM32 → ESP32 → 블루투스 → 이 화면</p>
 
   <div id="srLive" class="sr-only" role="status" aria-live="assertive" aria-atomic="true"></div>
@@ -235,7 +235,12 @@
 
 <script src="compose.js"></script>
 <script src="diagnose.js?v=2"></script>
-<script src="learn.js?v=2"></script>
+<script>
+  // 시연(테스트) 모드: 주소 끝에 ?demo 를 붙이면 정해진 문제를 정해진 순서로 냄. 학습 기록도 따로 저장
+  window.DEMO = new URLSearchParams(location.search).has('demo');
+  if (window.DEMO) window.BRAILLE_LEARN_KEY = 'brailleLearn_demo';
+</script>
+<script src="learn.js?v=3"></script>
 <script>
 const SVC = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // ESP32 → 폰 (notify)
@@ -254,6 +259,10 @@ const JAMO = { 'ㄱ':'기역','ㄴ':'니은','ㄷ':'디귿','ㄹ':'리을','ㅁ'
 const spoken = (mode, letter) => `${mode} ${JAMO[letter] || letter}`;
 
 // ---- 퀴즈 ----
+// 받침 있으면 '을', 없으면 '를' (자모는 이름 기준: 기역, 아 …)
+function josaEul(w) { const c = String(w).trim().slice(-1).charCodeAt(0);
+  if (c >= 0xAC00 && c <= 0xD7A3) return (c - 0xAC00) % 28 ? '을' : '를';
+  if (c >= 0x3131 && c <= 0x314E) return '을'; return '를'; }
 const WORDS = [   // 낱말, 정답 점자(여러 표기 가능: 약자 / 풀어 쓰기)
   ['사과',  ['123/4/1236', '6/126/4/1236']],
   ['나무',  ['14/15/134', '14/126/15/134']],
@@ -276,16 +285,16 @@ const WORDS = [   // 낱말, 정답 점자(여러 표기 가능: 약자 / 풀어
   ['연필',  ['16/145/135/2']],
   ['운동',  ['1245/24/123456']],
   ['얼음',  ['2345/246/26']],
-].map(([w, a]) => ({ kind: 'word', key: w, answers: a, prompt: `'${w}'를 써 보세요`, speak: `${w}, 를 써 보세요` }));
+].map(([w, a]) => ({ kind: 'word', key: w, answers: a, prompt: `'${w}'${josaEul(w)} 써 보세요`, speak: `${w}${josaEul(w)} 써 보세요` }));
 
 // 기초 모드 문제: 낱자 하나 = 점자 한 칸
 function basicItems() {
   const { INIT, VOW, FIN } = BRAILLE_MAPS, out = [];
   const add = (map, cat, on) => on && Object.entries(map).forEach(([cell, j]) =>
-    out.push({ kind: 'basic', key: `${cat} ${j}`, cell, prompt: `${cat} '${j}'`, speak: `${cat} ${JAMO[j] || j}, 를 써 보세요` }));
+    out.push({ kind: 'basic', key: `${cat} ${j}`, cell, prompt: `${cat} '${j}'`, speak: `${cat} ${JAMO[j] || j}${josaEul(JAMO[j] || j)} 써 보세요` }));
   add(VOW, '모음', $('sVow').checked); add(INIT, '첫소리', $('sInit').checked); add(FIN, '받침', $('sFin').checked);
   if ($('sAbbr').checked) ABBR_ONE.forEach(([cell, w]) =>                 // 약자: 한 칸으로 쓰는 글자
-    out.push({ kind: 'basic', key: `약자 ${w}`, cell, prompt: `약자 '${w}'`, speak: `약자 ${w}, 를 한 칸으로 써 보세요` }));
+    out.push({ kind: 'basic', key: `약자 ${w}`, cell, prompt: `약자 '${w}'`, speak: `약자 ${w}${josaEul(w)} 한 칸으로 써 보세요` }));
   return out;
 }
 const ABBR_ONE = [['1246','가'],['14','나'],['24','다'],['15','마'],['45','바'],['123','사'],['46','자'],['124','카'],
@@ -329,7 +338,7 @@ function go(name, isBack) {
   if (name === 'home')  say('처음 화면입니다. 퀴즈는 1번, 자유 쓰기는 2번, 나의 기록은 3번 점을 누르고 다음을 누르세요');
   if (name === 'quiz') {
     if (paused) { quiz = paused; paused = null; $('qstart').textContent = '퀴즈 끄기'; $('ox').textContent = '';
-                  $('qword').textContent = quiz.prompt + (quiz.kind === 'basic' ? '를 써 보세요' : '');
+                  $('qword').textContent = qText(quiz);
                   $('qinfo').innerHTML = '이어서 풀어요. 모르면 <b>지우기를 두 번</b> 누르면 정답을 읽어 줘요';
                   say(`퀴즈로 돌아왔어요. 문제 ${qnum}번. ${quiz.speak}`); }               // 이어서 풀기
     else { score = { o: 0, x: 0 }; newQuestion(); showScore(); }                         // 처음이면 바로 시작
@@ -370,8 +379,8 @@ const sayQuestion = () => quiz && say(`문제 ${qnum}번. ${quiz.speak}`);
 function itemsOfCat(cat) {
   if (cat === '단어') return WORDS;
   const { INIT, VOW, FIN } = BRAILLE_MAPS, map = { '모음': VOW, '첫소리': INIT, '받침': FIN };
-  if (cat === '약자') return ABBR_ONE.map(([cell, w]) => ({ kind: 'basic', key: `약자 ${w}`, cell, prompt: `약자 '${w}'`, speak: `약자 ${w}, 를 한 칸으로 써 보세요` }));
-  return Object.entries(map[cat]).map(([cell, j]) => ({ kind: 'basic', key: `${cat} ${j}`, cell, prompt: `${cat} '${j}'`, speak: `${cat} ${JAMO[j] || j}, 를 써 보세요` }));
+  if (cat === '약자') return ABBR_ONE.map(([cell, w]) => ({ kind: 'basic', key: `약자 ${w}`, cell, prompt: `약자 '${w}'`, speak: `약자 ${w}${josaEul(w)} 한 칸으로 써 보세요` }));
+  return Object.entries(map[cat]).map(([cell, j]) => ({ kind: 'basic', key: `${cat} ${j}`, cell, prompt: `${cat} '${j}'`, speak: `${cat} ${JAMO[j] || j}${josaEul(JAMO[j] || j)} 써 보세요` }));
 }
 // 자동 단계: 지금 단계까지의 체크 칸·모드를 맞춤 (이전 단계는 복습용으로 같이)
 function applyStage() {
@@ -385,7 +394,34 @@ function applyStage() {
     $('subs').style.display = m === 'basic' ? 'flex' : 'none'; }
 }
 let qStartT = 0;
+const qText = q => (DEMO ? `문제 ${qnum + (q === quiz ? 0 : 1)}번 · ` : '') + (q.kind === 'basic' ? `${q.prompt}${josaEul(q.prompt.replace(/'/g, ''))} 써 보세요` : q.prompt);
+
+// ===== 시연 모드: 아래 목록 순서대로 출제 (바꾸고 싶으면 여기만 고치면 됨) =====
+const DEMO_LIST = ['첫소리 ㅎ', '모음 ㅓ', '받침 ㄱ', '약자 나', '사과', '그러나'];
+let demoPos = -1, demoRetry = false;
+function demoItem(key) {
+  for (const c of Learn.STAGES) { const f = itemsOfCat(c).find(x => x.key === key); if (f) return f; }
+  return null;
+}
+function demoQuestion() {
+  const retry = demoRetry && demoPos >= 0;
+  if (!retry) demoPos++;
+  demoRetry = false;
+  if (demoPos >= DEMO_LIST.length) { demoPos = 0; say('시연 문제를 모두 풀었어요. 처음부터 다시 시작해요'); }
+  const q = demoItem(DEMO_LIST[demoPos]);
+  quiz = q; qnum = demoPos + 1;
+  $('qword').textContent = qText(q);
+  $('ox').textContent = ''; $('ox').className = 'ox';
+  $('qinfo').innerHTML = (retry ? '<b>한 번 더 써 보세요.</b> ' : '') + (q.kind === 'basic'
+    ? '점을 누르고 <b>다음</b>을 누르면 바로 채점돼요'
+    : '점을 누르고 <b>다음</b>(칸 확정), 다 썼으면 <b>완료</b>를 누르세요');
+  $('qstart').textContent = '퀴즈 끄기';
+  history = []; showHistory();
+  qStartT = performance.now();
+  setTimeout(() => say(`${retry ? '다시 ' : ''}문제 ${qnum}번. ${q.speak}`), retry ? 0 : 0);
+}
 function newQuestion() {
+  if (DEMO) return demoQuestion();
   applyStage();
   let all = quizMode === 'basic' ? basicItems() : WORDS;
   if (!all.length) { $('sVow').checked = true; all = basicItems(); }   // 아무것도 안 골랐으면 모음
@@ -400,7 +436,7 @@ function newQuestion() {
     if (v < best) { best = v; q = x; }
   }
   quiz = q;
-  $('qword').textContent = q.prompt + (q.kind === 'basic' ? '를 써 보세요' : '');
+  $('qword').textContent = qText(q);
   $('ox').textContent = ''; $('ox').className = 'ox';
   $('qinfo').innerHTML = q.kind === 'basic'
     ? '점을 누르고 <b>다음</b>을 누르면 바로 채점돼요'
@@ -446,6 +482,7 @@ function gradeCell(cell) {
 
 function finishGrade(ok, errors, okHtml, xHtml, okSay, xSay, logText) {
   Diagnose.record(quiz.key, ok, errors);
+  if (DEMO) demoRetry = !ok;
   const sec = (performance.now() - qStartT) / 1000;
   const slow = Learn.record(quiz.key, quiz.kind, ok, sec, errors);         // 폰에 저장
   if (slow) { okHtml += `<br><span class="note">맞았지만 ${sec.toFixed(0)}초 걸렸어요. 조금 더 연습해요</span>`; okSay = '맞았어요. 그런데 조금 오래 걸렸어요. 한 번 더 연습해 봐요'; }
@@ -752,7 +789,7 @@ $('qstart').addEventListener('click', () => {
   if (quiz) { stopQuiz(); paused = null; say('퀴즈를 껐어요'); }
   else { score = { o: 0, x: 0 }; newQuestion(); showScore(); }
 });
-$('qskip').addEventListener('click', () => { if (quiz) newQuestion(); });
+$('qskip').addEventListener('click', () => { if (quiz) { demoRetry = false; newQuestion(); } });
 $('goHome').addEventListener('click', () => go('home'));
 $('goBack').addEventListener('click', goBack);
 $('qans').addEventListener('click', showAnswer);
@@ -784,6 +821,13 @@ $('mWord').addEventListener('click', () => { $('autoStage').checked = false; Lea
 ['sVow', 'sInit', 'sFin', 'sAbbr'].forEach(id => $(id).addEventListener('change', () => {
   $('autoStage').checked = false; Learn.L.auto = false; Learn.save();               // 직접 고르면 자동 단계 끄기
   if (quiz && quizMode === 'basic') newQuestion(); }));
+if (DEMO) {
+  $('demoTag').style.display = 'inline-block';
+  $('autoStage').checked = false;
+  for (const id of ['stageBox', 'subs']) $(id).style.display = 'none';
+  document.querySelector('.modes').style.display = 'none';
+  $('qskip').textContent = '다음 문제';
+}
 try { $('srMode').checked = localStorage.getItem('srMode') === '1'; } catch (e) {}
 $('srMode').addEventListener('change', () => {
   try { localStorage.setItem('srMode', $('srMode').checked ? '1' : '0'); } catch (e) {}
