@@ -501,7 +501,9 @@ function finishGrade(ok, errors, okHtml, xHtml, okSay, xSay, logText) {
   }
   log(`퀴즈 '${quiz.key}' → ${ok ? 'O' : 'X'} (${logText})${errors.map(e => ' · ' + e.type).join('')}`);
   const thisQ = quiz;
-  setTimeout(() => { if (quiz && quiz === thisQ && screen === 'quiz') newQuestion(); }, (ok ? 3000 : 8000) + (advanced ? 4000 : 0));
+  // 피드백을 끝까지 들은 뒤 1.2초 쉬고 다음 문제 (중간에 끊기지 않게)
+  afterSpeech(() => setTimeout(() => { if (quiz && quiz === thisQ && screen === 'quiz') newQuestion(); }, 1200),
+    (ok ? 1500 : 2500) + (advanced ? 4000 : 0));
 }
 
 // 자주 틀리는 유형·글자 보여 주기
@@ -596,10 +598,28 @@ function say(text) {
     return;
   }
   if (!$('speak').checked || !('speechSynthesis' in window)) return;
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = 'ko-KR'; u.rate = 1.1;
   if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
-  setTimeout(() => speechSynthesis.speak(u), 80);   // 취소 직후 바로 말하면 안드로이드에서 씹히는 경우가 있음
+  // 안드로이드 Chrome은 긴 문장을 한 번에 읽으면 중간에 끊기는 경우가 있어서, 문장 단위로 나눠서 차례로 읽음
+  const parts = String(text).split(/(?<=[.!?])\s+/).map(t => t.trim()).filter(Boolean);
+  const myId = ++speakSeq;
+  setTimeout(() => {                                 // 취소 직후 바로 말하면 안드로이드에서 씹히는 경우가 있음
+    if (myId !== speakSeq) return;
+    for (const t of parts) {
+      const u = new SpeechSynthesisUtterance(t);
+      u.lang = 'ko-KR'; u.rate = 1.1;
+      speechSynthesis.speak(u);
+    }
+  }, 80);
+}
+var speakSeq = 0;
+// 말이 다 끝난 뒤에 다음 동작 (최소 minMs 기다리고, 최대 25초)
+function afterSpeech(cb, minMs) {
+  const t0 = Date.now();
+  if ($('srMode').checked || !$('speak').checked || !('speechSynthesis' in window)) { setTimeout(cb, Math.max(minMs, 6000)); return; }
+  const timer = setInterval(() => {
+    const busy = speechSynthesis.speaking || speechSynthesis.pending;
+    if ((Date.now() - t0 > minMs && !busy) || Date.now() - t0 > 25000) { clearInterval(timer); cb(); }
+  }, 250);
 }
 
 function log(line) {
