@@ -374,6 +374,7 @@ function seqHtml(cells, isWord) {
 }
 function showAnswer() {
   if (!quiz) return;
+  answeredQ = quiz;
   const cells = quiz.kind === 'basic' ? [quiz.cell] : quiz.answers[0].split('/');
   const spoken = cells.length === 1
     ? `${cells[0].split('').join(', ')}번 점`
@@ -419,6 +420,25 @@ function applyStage() {
 let qStartT = 0;
 // ===== 사용법 안내 (화면 버튼, 또는 기기에서 점 없이 '다음'을 두 번) =====
 var lastEmpty = -1e9;
+// ===== 문제를 읽은 뒤 12초 동안 아무것도 누르지 않으면 정답 듣는 방법 안내 (문제마다 한 번) =====
+var idleTimer = null, lastActivity = 0, answeredQ = null;
+const IDLE_MS = 12000;
+function armIdleHint() {
+  clearTimeout(idleTimer);
+  const q = quiz; answeredQ = null;
+  afterSpeech(() => {
+    if (quiz !== q) return;
+    lastActivity = performance.now();
+    const check = () => {
+      if (quiz !== q || screen !== 'quiz' || answeredQ === q) return;   // 문제가 바뀌었거나 이미 답했으면 그만
+      const idle = performance.now() - lastActivity;
+      if (idle < IDLE_MS) { idleTimer = setTimeout(check, IDLE_MS - idle + 50); return; }
+      if (history.length) return;                                        // 쓰는 중이면 방해하지 않음
+      say('정답을 듣고 싶으면 가운데 지우기 버튼을 두 번 누르세요');
+    };
+    idleTimer = setTimeout(check, IDLE_MS);
+  }, 0);
+}
 const HELP_TEXT = [
   '사용법을 알려 드릴게요.',
   '위쪽에 점자 키 6개가 있어요. 왼쪽 줄이 위에서부터 1번, 2번, 3번 점이고, 오른쪽 줄이 4번, 5번, 6번 점이에요.',
@@ -455,6 +475,7 @@ function demoQuestion() {
   history = []; showHistory();
   qStartT = performance.now();
   setTimeout(() => say(`${retry ? '다시 ' : ''}문제 ${qnum}번. ${q.speak}`), retry ? 0 : 0);
+  armIdleHint();
 }
 function newQuestion() {
   if (DEMO) return demoQuestion();
@@ -482,6 +503,7 @@ function newQuestion() {
   qnum++;
   qStartT = performance.now();
   sayQuestion();
+  armIdleHint();
 }
 function showScore() { $('score').textContent = quiz || score.o + score.x ? `O ${score.o} · X ${score.x}` : ''; }
 function gradeWord(word, cells) {
@@ -518,6 +540,7 @@ function gradeCell(cell) {
 
 function finishGrade(ok, errors, okHtml, xHtml, okSay, xSay, logText) {
   Diagnose.record(quiz.key, ok, errors);
+  answeredQ = quiz;
   if (DEMO) demoRetry = !ok;
   const sec = (performance.now() - qStartT) / 1000;
   const slow = Learn.record(quiz.key, quiz.kind, ok, sec, errors);         // 폰에 저장
@@ -684,6 +707,7 @@ function handleLine(line) {
   const hide = $('hidePins').checked;
 
   if (line === 'ping') { if (!hide) log(line); return; }
+  if (!line.startsWith('PINS')) lastActivity = performance.now();   // 키를 누르면 '가만히 있음' 시간 초기화
 
   let m = line.match(/^PINS\s+([01]{6})$/);
   if (m) { showDots(m[1]); if (!hide) log(line); return; }
