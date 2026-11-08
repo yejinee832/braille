@@ -689,7 +689,18 @@ function setStatus(on, text) {
 }
 
 let srSeq = 0;
+// 자음 이름 뒤에 조사가 붙으면 음성 엔진이 이어서 읽어 '히읃이에요 → 히으디에요'처럼 흐려짐.
+// 그래서 소리로 읽을 때만 조사를 떼고 쉼표·마침표로 끊어서 이름을 또렷하게 읽게 함
+//   예) 지금 쓴 점자는 히읃이에요 → 지금 쓴 점자는 히읃.   /  첫소리 히읃을 써 보세요 → 첫소리 히읃, 써 보세요
+const CONS_NAMES = Object.entries(JAMO).filter(([k]) => k < 'ㅏ').map(([, v]) => v).join('|');
+function speakFix(t) {
+  return String(t)
+    .replace(new RegExp(`(${CONS_NAMES})\\s*(이에요|예요)`, 'g'), '$1.')
+    .replace(new RegExp(`(${CONS_NAMES})\\s*(을|를|은|는|이|가)(?=[\\s.,!?]|$)`, 'g'), '$1,')
+    .replace(/\s+(이에요|예요)/g, '$1').replace(/\s+([.,])/g, '$1').replace(/\.{2,}/g, '.').replace(/\s{2,}/g, ' ');
+}
 function say(text) {
+  text = speakFix(text);
   if ($('srMode').checked) {                     // TalkBack이 읽도록 알림 영역에 글자로 넣기
     const el = $('srLive'), n = ++srSeq;
     el.textContent = '';
