@@ -328,7 +328,7 @@ const WORDS = [   // 낱말, 정답 점자(여러 표기 가능: 약자 / 풀어
   ['연필',  ['16/145/135/2']],
   ['운동',  ['1245/24/123456']],
   ['얼음',  ['2345/246/26']],
-].map(([w, a]) => ({ kind: 'word', key: w, answers: a, prompt: `'${w}'${josaEul(w)} 써 보세요`, speak: `${w}${josaEul(w)} 써 보세요` }));
+].map(([w, a]) => ({ kind: 'word', key: w, answers: a, prompt: `'${w}'${josaEul(w)} 써 보세요`, speak: `${sk(w, josaEul)} 써 보세요` }));
 
 // 기초 모드 문제: 낱자 하나 = 점자 한 칸
 function basicItems() {
@@ -337,7 +337,7 @@ function basicItems() {
     out.push({ kind: 'basic', key: `${cat} ${j}`, cell, prompt: `${cat} '${j}'`, speak: `${cat} ${JAMO[j] || j}${josaEul(JAMO[j] || j)} 써 보세요` }));
   add(VOW, '모음', $('sVow').checked); add(INIT, '첫소리', $('sInit').checked); add(FIN, '받침', $('sFin').checked);
   if ($('sAbbr').checked) ABBR_ONE.forEach(([cell, w]) =>                 // 약자: 한 칸으로 쓰는 글자
-    out.push({ kind: 'basic', key: `약자 ${w}`, cell, prompt: `약자 '${w}'`, speak: `약자 ${w}${josaEul(w)} 한 칸으로 써 보세요` }));
+    out.push({ kind: 'basic', key: `약자 ${w}`, cell, prompt: `약자 '${w}'`, speak: `${sk('약자 ' + w, josaEul)} 한 칸으로 써 보세요` }));
   return out;
 }
 const ABBR_ONE = [['1246','가'],['14','나'],['24','다'],['15','마'],['45','바'],['123','사'],['46','자'],['124','카'],
@@ -417,7 +417,7 @@ function showAnswer() {
   $('ox').textContent = '?'; $('ox').className = 'ox';
   $('qinfo').innerHTML = `정답: 왼쪽부터 차례로 누르세요${seqHtml(cells, quiz.kind !== 'basic')}들은 대로 다시 써 보세요`;
   log(`정답 보기 '${quiz.key}' → ${cells.join('/')}`);
-  say(`${readable(quiz.key)}, 정답은 ${spoken}. 들은 대로 다시 써 보세요`);
+  say(`${sk(quiz.key)}, 정답은 ${spoken}. 들은 대로 다시 써 보세요`);
 }
 function goBack() { go(backStack.length ? backStack.pop() : 'home', true); }
 function statsSpeech() {
@@ -434,7 +434,7 @@ const sayQuestion = () => quiz && say(`문제 ${qnum}번. ${quiz.speak}`);
 function itemsOfCat(cat) {
   if (cat === '단어') return WORDS;
   const { INIT, VOW, FIN } = BRAILLE_MAPS, map = { '모음': VOW, '첫소리': INIT, '받침': FIN };
-  if (cat === '약자') return ABBR_ONE.map(([cell, w]) => ({ kind: 'basic', key: `약자 ${w}`, cell, prompt: `약자 '${w}'`, speak: `약자 ${w}${josaEul(w)} 한 칸으로 써 보세요` }));
+  if (cat === '약자') return ABBR_ONE.map(([cell, w]) => ({ kind: 'basic', key: `약자 ${w}`, cell, prompt: `약자 '${w}'`, speak: `${sk('약자 ' + w, josaEul)} 한 칸으로 써 보세요` }));
   return Object.entries(map[cat]).map(([cell, j]) => ({ kind: 'basic', key: `${cat} ${j}`, cell, prompt: `${cat} '${j}'`, speak: `${cat} ${JAMO[j] || j}${josaEul(JAMO[j] || j)} 써 보세요` }));
 }
 // 자동 단계: 지금 단계까지의 체크 칸·모드를 맞춤 (이전 단계는 복습용으로 같이)
@@ -543,8 +543,8 @@ function gradeWord(word, cells) {
   finishGrade(ok, d.errors,
     `정답! 입력: ${cells.map(c => c.split('').join('·')).join(' → ')}`,
     `입력한 것: <b>${word || '(없음)'}</b> (${cells.map(c => c.split('').join('·')).join(' → ') || '-'})<br>정답 점자:${seqHtml(d.answer, true)}`,
-    `맞았어요! ${quiz.key}${eulReul(quiz.key)} 잘 썼어요`,
-    `틀렸어요.${word && !word.includes('?') ? ` 지금 쓴 단어는 ${word}${ieyoK(word)}.` : ''}{E} 정답은 ${quiz.key}${ieyoK(quiz.key)}.`,
+    `맞았어요! ${sk(quiz.key, eulReul)} 잘 썼어요`,
+    `틀렸어요.${word && !word.includes('?') ? ` 지금 쓴 단어는 ${sk(word, ieyoK)}.` : ''}{E} 정답은 ${sk(quiz.key, ieyoK)}.`,
     `입력 ${word}, ${cells.join('/')}`);
 }
 
@@ -564,7 +564,7 @@ function gradeCell(cell) {
   finishGrade(ok, errors,
     `정답! ${quiz.prompt} = ${dots(cell)}번 점`,
     `입력한 점: <b>${dots(cell)}</b><br>정답 점자: <b>${dots(quiz.cell)}</b>`,
-    `맞았어요! ${readable(quiz.key)}${eulReul(readable(quiz.key))} 잘 썼어요`,
+    `맞았어요! ${sk(quiz.key, eulReul)} 잘 썼어요`,
     `틀렸어요.{E}`,
     `입력 ${cell}`);
 }
@@ -694,19 +694,29 @@ let srSeq = 0;
 //   예) 지금 쓴 점자는 히읃이에요 → 지금 쓴 점자는 히 읃.   /  첫소리 히읃을 써 보세요 → 첫소리 히 읃. 써 보세요
 // 쉼표로 끊으면 끝이 올라가서(말이 이어지는 억양) 마침표로 끊고, 이름은 한 글자씩 띄어서 또박또박 읽게 함
 const CONS_NAMES = Object.entries(JAMO).filter(([k]) => k < 'ㅏ').map(([, v]) => v).join('|');
+// 문제·정답이 되는 낱말은 천천히(0.8배) 읽도록 ⟦ ⟧로 표시. 모음 한 글자(ㅏ, ㅓ …)는 그대로
+// sk('사과', josaEul) → '⟦사과를⟧',  sk('약자 나') → '약자 ⟦나⟧',  sk('첫소리 ㅎ') → '첫소리 히읃' (자음 이름은 speakFix가 표시)
+function sk(key, josa) {
+  const m = String(key).match(/^(모음|첫소리|받침|약자) (.+)$/);
+  const cat = m ? m[1] + ' ' : '', rest = m ? m[2] : String(key);
+  if (JAMO[rest]) return cat + JAMO[rest] + (josa ? josa(JAMO[rest]) : '');
+  return cat + `⟦${rest}${josa ? josa(rest) : ''}⟧`;
+}
+const SLOW_RATE = 0.8, NORMAL_RATE = 1.1;
 function speakFix(t) {
   return String(t)
     .replace(new RegExp(`(${CONS_NAMES})\\s*(이에요|예요)`, 'g'), '$1.')
     .replace(new RegExp(`(${CONS_NAMES})\\s*(을|를|은|는|이|가)(?=[\\s.,!?]|$)`, 'g'), '$1.')
-    .replace(new RegExp(CONS_NAMES, 'g'), m => m.split('').join(' '))   // 히읃 → 히 읃 (한 글자씩 또박또박)
+    .replace(new RegExp(CONS_NAMES, 'g'), m => `⟦${m.split('').join(' ')}⟧`)   // 히읃 → ⟦히 읃⟧ (한 글자씩, 천천히)
     .replace(/\s+(이에요|예요)/g, '$1').replace(/\s+([.,])/g, '$1').replace(/\.{2,}/g, '.').replace(/\s{2,}/g, ' ');
 }
 function say(text) {
   text = speakFix(text);
+  const plain = text.replace(/[⟦⟧]/g, '');
   if ($('srMode').checked) {                     // TalkBack이 읽도록 알림 영역에 글자로 넣기
     const el = $('srLive'), n = ++srSeq;
     el.textContent = '';
-    setTimeout(() => { if (n === srSeq) el.textContent = text; }, 60);   // 같은 문장도 다시 읽게 비웠다 넣기
+    setTimeout(() => { if (n === srSeq) el.textContent = plain; }, 60);   // 같은 문장도 다시 읽게 비웠다 넣기
     return;
   }
   if (!$('speak').checked || !('speechSynthesis' in window)) return;
@@ -717,9 +727,15 @@ function say(text) {
   setTimeout(() => {                                 // 취소 직후 바로 말하면 안드로이드에서 씹히는 경우가 있음
     if (myId !== speakSeq) return;
     for (const t of parts) {
-      const u = new SpeechSynthesisUtterance(t);
-      u.lang = 'ko-KR'; u.rate = 1.1;
-      speechSynthesis.speak(u);
+      // ⟦ ⟧ 안(문제·정답 낱말, 자음 이름)은 천천히, 나머지는 보통 속도로 나눠 읽기
+      for (const piece of t.split(/(⟦[^⟧]*⟧)/)) {
+        const slow = piece.startsWith('⟦');
+        const txt = piece.replace(/[⟦⟧]/g, '').trim();
+        if (!txt || /^[.,!?\s]+$/.test(txt)) continue;
+        const u = new SpeechSynthesisUtterance(txt);
+        u.lang = 'ko-KR'; u.rate = slow ? SLOW_RATE : NORMAL_RATE;
+        speechSynthesis.speak(u);
+      }
     }
   }, 80);
 }
