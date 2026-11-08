@@ -291,14 +291,18 @@ let history = [], lastCell = '', words = [];   // 완료로 확정한 칸들, �
 const decoder = new TextDecoder();             // 한글이 조각나서 와도 이어 붙이기
 
 // 소리로 읽을 때 자음·모음 이름
-const JAMO = { 'ㄱ':'기역','ㄴ':'니은','ㄷ':'디귿','ㄹ':'리을','ㅁ':'미음','ㅂ':'비읍','ㅅ':'시옷','ㅇ':'이응',
-  'ㅈ':'지읒','ㅊ':'치읓','ㅋ':'키읔','ㅌ':'티읕','ㅍ':'피읖','ㅎ':'히읗','ㅆ':'쌍시옷',
+// 음성 합성이 '히읗'을 '히을'처럼 흐리게 읽어서, 받침을 끝소리 규칙대로(대표음) 적어 또렷하게 읽게 함
+// 예) 히읗 → 히읃, 티읕 → 티읃, 키읔 → 키윽, 피읖 → 피읍, 시옷 → 시옫
+const JAMO = { 'ㄱ':'기역','ㄴ':'니은','ㄷ':'디귿','ㄹ':'리을','ㅁ':'미음','ㅂ':'비읍','ㅅ':'시옫','ㅇ':'이응',
+  'ㅈ':'지읃','ㅊ':'치읃','ㅋ':'키윽','ㅌ':'티읃','ㅍ':'피읍','ㅎ':'히읃','ㅆ':'쌍시옫',
   'ㅏ':'아','ㅑ':'야','ㅓ':'어','ㅕ':'여','ㅗ':'오','ㅛ':'요','ㅜ':'우','ㅠ':'유','ㅡ':'으','ㅣ':'이',
   'ㅐ':'애','ㅒ':'얘','ㅔ':'에','ㅖ':'예','ㅘ':'와','ㅙ':'왜','ㅚ':'외','ㅝ':'워','ㅞ':'웨','ㅟ':'위','ㅢ':'의' };
 const spoken = (mode, letter) => `${mode} ${JAMO[letter] || letter}`;
 
 // ---- 퀴즈 ----
 // 받침 있으면 '을', 없으면 '를' (자모는 이름 기준: 기역, 아 …)
+function ieyoK(w) { const c = String(w).trim().slice(-1).charCodeAt(0);   // 이에요/예요
+  return c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 ? '이에요' : '예요'; }
 function josaEul(w) { const c = String(w).trim().slice(-1).charCodeAt(0);
   if (c >= 0xAC00 && c <= 0xD7A3) return (c - 0xAC00) % 28 ? '을' : '를';
   if (c >= 0x3131 && c <= 0x314E) return '을'; return '를'; }
@@ -540,7 +544,7 @@ function gradeWord(word, cells) {
     `정답! 입력: ${cells.map(c => c.split('').join('·')).join(' → ')}`,
     `입력한 것: <b>${word || '(없음)'}</b> (${cells.map(c => c.split('').join('·')).join(' → ') || '-'})<br>정답 점자:${seqHtml(d.answer, true)}`,
     `맞았어요! ${quiz.key}${eulReul(quiz.key)} 잘 썼어요`,
-    `틀렸어요. 정답은 ${quiz.key} 입니다.`,
+    `틀렸어요.${word && !word.includes('?') ? ` 지금 쓴 단어는 ${word}${ieyoK(word)}.` : ''}{E} 정답은 ${quiz.key}${ieyoK(quiz.key)}.`,
     `입력 ${word}, ${cells.join('/')}`);
 }
 
@@ -561,7 +565,7 @@ function gradeCell(cell) {
     `정답! ${quiz.prompt} = ${dots(cell)}번 점`,
     `입력한 점: <b>${dots(cell)}</b><br>정답 점자: <b>${dots(quiz.cell)}</b>`,
     `맞았어요! ${readable(quiz.key)}${eulReul(readable(quiz.key))} 잘 썼어요`,
-    `틀렸어요. ${readable(quiz.key)}${eunNeun(readable(quiz.key))} ${dots(quiz.cell)}번 점이에요.`,
+    `틀렸어요.{E}`,
     `입력 ${cell}`);
 }
 
@@ -591,7 +595,8 @@ function finishGrade(ok, errors, okHtml, xHtml, okSay, xSay, logText) {
     const hints = errors.map(e => `<li><span class="t">${e.where ? e.where + ' · ' : ''}${e.type}</span><br>${e.msg}</li>`).join('');
     $('qinfo').innerHTML = xHtml + `<ul class="hints">${hints}</ul>`;
     const first = errors[0] ? ` ${errors[0].where ? errors[0].where + '. ' : ''}${readable(errors[0].msg.replace(/·/g, ', '))}` : '';
-    say(xSay + first);
+    // 안내 순서: 틀렸어요 → 지금 쓴 글자 → 무엇이 틀렸는지 → 정답
+    say(xSay.includes('{E}') ? xSay.replace('{E}', first) : xSay + first);
   }
   log(`퀴즈 '${quiz.key}' → ${ok ? 'O' : 'X'} (${logText})${errors.map(e => ' · ' + e.type).join('')}`);
   const thisQ = quiz;

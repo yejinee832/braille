@@ -36,10 +36,11 @@
   // 한 칸 비교: 정답 a, 입력 u
   function compareCell(u, a, readAs) {
     const r = compareCellCore(u, a);
+    // 안내 순서: ① 지금 쓴 글자 → ② 무엇이 틀렸는지 → ③ 정답
     if (r.type !== '초성·받침 혼동' && r.type !== '다른 글자' && u) {
       const w = writtenAs(u, readAs);
-      if (w) { r.wrote = w; r.msg += ` 지금 쓴 점자는 ${w}${ieyo(w)}.`; }
-      else if (u) r.msg += ' 지금 쓴 점자는 없는 글자예요.';
+      if (w) { r.wrote = w; r.msg = `지금 쓴 점자는 ${w}${ieyo(w)}. ` + r.msg; }
+      else r.msg = '지금 쓴 점자는 없는 글자예요. ' + r.msg;
     }
     return r;
   }
@@ -47,9 +48,9 @@
     const { INIT, FIN } = M(); const U = set(u), A = set(a);
     const miss = [...A].filter(d => !U.has(d)), extra = [...U].filter(d => !A.has(d));
     if (FIN[u] && INIT[a] && FIN[u] === INIT[a])
-      return { type: '초성·받침 혼동', msg: `${dots(u)}번 점은 받침 ${FIN[u]}이에요. 첫소리 ${INIT[a]}은 ${dots(a)}번 점이에요.` };
+      return { type: '초성·받침 혼동', wrote: '받침 ' + FIN[u], msg: `지금 쓴 점자는 받침 ${FIN[u]}이에요. 첫소리와 받침 자리를 헷갈렸어요. 첫소리 ${INIT[a]}은 ${dots(a)}번 점이에요.` };
     if (INIT[u] && FIN[a] && INIT[u] === FIN[a])
-      return { type: '초성·받침 혼동', msg: `${dots(u)}번 점은 첫소리 ${INIT[u]}이에요. 받침 ${FIN[a]}은 ${dots(a)}번 점이에요.` };
+      return { type: '초성·받침 혼동', wrote: '첫소리 ' + INIT[u], msg: `지금 쓴 점자는 첫소리 ${INIT[u]}이에요. 첫소리와 받침 자리를 헷갈렸어요. 받침 ${FIN[a]}은 ${dots(a)}번 점이에요.` };
     if (u.length > 0 && mapCell(u, MIRROR) === a)
       return { type: '좌우 반전', msg: `좌우가 바뀌었어요. ${dots(u)}번이 아니라 ${dots(a)}번 점이에요.` };
     if (u.length > 0 && mapCell(u, FLIP) === a)
@@ -60,7 +61,9 @@
       return { type: '점 추가', msg: `${extra.join('·')}번 점을 더 눌렀어요. 정답은 ${dots(a)}번 점이에요.` };
     if (miss.length + extra.length <= 2)
       return { type: '점 위치 틀림', msg: `${extra.join('·')}번 대신 ${miss.join('·')}번 점이에요. 정답은 ${dots(a)}번 점이에요.` };
-    return { type: '다른 글자', msg: `${meaning(u)}(${dots(u)}) 대신 ${meaning(a)}(${dots(a)})${ieyo(meaning(a)) === '예요' ? '를' : '을'} 써야 해요.` };
+    const mu = meaning(u), ma = meaning(a);
+    const head = mu !== '없는 점자' ? `지금 쓴 점자는 ${mu}${ieyo(mu)}.` : '지금 쓴 점자는 없는 글자예요.';
+    return { type: '다른 글자', wrote: mu !== '없는 점자' ? mu : '', msg: `${head} 다른 글자를 썼어요. ${ma}${ieyo(ma) === '예요' ? '는' : '은'} ${dots(a)}번 점이에요.` };
   }
 
   // 칸 순서 맞추기(편집 거리)로 빠진 칸·더 쓴 칸까지 찾기
